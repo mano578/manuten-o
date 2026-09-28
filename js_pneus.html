@@ -1,0 +1,465 @@
+<script>
+  // ================= MÓDULO OPERACIONAL: CONTROLE DE PNEUS =================
+
+  // Cache para o filtro de busca em tempo real funcionar rápido
+  let pneusGlobalCache = [];
+
+  function abrirModalNovoPneu() {
+    document.getElementById('formNovoPneu').reset();
+    document.getElementById('txt-sugestao-fogo').innerText = "Consultando contador...";
+    document.getElementById('modal-novo-pneu').style.display = 'flex';
+
+    google.script.run.withSuccessHandler(function(sugestao) {
+      var fogoSugerido = sugestao.contagem + sugestao.semanaAno;
+      document.getElementById('txt-sugestao-fogo').innerText = "Fogo sugerido para a compra desta semana: " + fogoSugerido;
+      document.getElementById('pn-fogo').value = fogoSugerido; 
+    }).obterProximoSequencialFogo();
+  }
+
+  function enviarFormularioPneu(event) {
+    event.preventDefault();
+    var btn = document.getElementById('btn-submit-pneu');
+    var txtOriginal = btn.innerText;
+    btn.innerText = "⏳ Registrando patrimônio...";
+    btn.disabled = true;
+
+    var dados = {
+      numeroFogo: document.getElementById('pn-fogo').value,
+      dot: document.getElementById('pn-dot').value,
+      marca: document.getElementById('pn-marca').value,
+      modelo: document.getElementById('pn-modelo').value,
+      tamanho: document.getElementById('pn-tamanho').value,
+      situacao: document.getElementById('pn-situacao').value,
+      sulco: document.getElementById('pn-sulco').value,
+      valor: document.getElementById('pn-valor').value
+    };
+
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      if(res.sucesso) {
+        document.getElementById('formNovoPneu').reset();
+        fecharModal('modal-novo-pneu');
+        carregarListaPneus();
+      }
+      btn.innerText = txtOriginal; btn.disabled = false;
+    }).salvarNovoPneu(dados);
+  }
+
+  function carregarListaPneus() {
+    var tbody = document.getElementById('tbody-cadastro-pneu');
+    if(!tbody) return;
+    
+    if (!pneusGlobalCache || pneusGlobalCache.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="12" class="vazio-msg">Buscando estoque de pneus no servidor...</td></tr>';
+    }
+
+    google.script.run.withSuccessHandler(function(lista) {
+      pneusGlobalCache = lista; 
+      renderizarTabelaPneus(pneusGlobalCache);
+    }).listarPneusBackend();
+  }
+
+  function manipularBuscaPneus() {
+    var termo = document.getElementById('input-busca-pneus').value.toUpperCase().trim();
+    
+    if (termo === "") {
+      renderizarTabelaPneus(pneusGlobalCache);
+      return;
+    }
+
+    var filtrados = pneusGlobalCache.filter(p => {
+      return String(p.numeroFogo).toUpperCase().indexOf(termo) > -1 ||
+             String(p.marca).toUpperCase().indexOf(termo) > -1 ||
+             String(p.modelo).toUpperCase().indexOf(termo) > -1 ||
+             String(p.tamanho).toUpperCase().indexOf(termo) > -1 ||
+             String(p.status).toUpperCase().indexOf(termo) > -1 ||
+             String(p.veiculo).toUpperCase().indexOf(termo) > -1;
+    });
+
+    renderizarTabelaPneus(filtrados);
+  }
+
+  function renderizarTabelaPneus(lista) {
+    var tbody = document.getElementById('tbody-cadastro-pneu');
+    if(!tbody) return;
+    if(lista.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="12" class="vazio-msg">Nenhum pneu localizado.</td></tr>';
+      return;
+    }
+
+    var html = '';
+    lista.forEach(p => {
+      var corStatus = p.status === 'EM ESTOQUE' ? 'color:#059669; font-weight:bold;' : 'color:#2563eb; font-weight:bold;';
+      if(p.status === 'SUCATEADO') corStatus = 'color:#64748b; text-decoration:line-through;';
+      var localizacao = (p.veiculo && p.veiculo.trim() !== '-' && p.veiculo.trim() !== '') 
+                        ? `🚚 ${p.veiculo} (${p.posicao})` 
+                        : '📦 Almoxarifado';
+
+      html += `<tr>
+        <td style="font-weight:bold; color:#475569;">${p.id}</td>
+        <td>${p.dataCadastro}</td>
+        <td style="font-size:11px; font-weight:800; color:#111827; background:#f3f4f6; padding:3px 6px; border-radius:4px; text-align:center;">${p.numeroFogo}</td>
+        <td><strong>${p.marca}</strong> <span style="font-size:10px; color:#64748b;">${p.modelo}</span></td>
+        <td>${p.tamanho}</td>
+        <td>R$ ${parseFloat(p.valor).toFixed(2)}</td>
+        <td><span class="tag-cat">${p.situacao}</span></td>
+        <td><span style="${corStatus}">${p.status}</span></td>
+        <td>${localizacao}</td>
+        <td style="font-weight:bold; color:#166534;">${parseFloat(p.kmRodado).toLocaleString('pt-BR')} KM</td>
+        <td style="font-weight:bold; color:#b91c1c;">R$ ${parseFloat(p.cpk).toFixed(4)}</td>
+        <td style="text-align:center;">
+          <button onclick="abrirModalEditarCadastroPneu(${p.linhaOrigem})" style="background:#3b82f6; color:white; border:none; padding:3px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:bold;" title="Editar">✏️</button>
+        </td>
+      </tr>`;
+    });
+    tbody.innerHTML = html;
+  }
+
+  function abrirModalEditarCadastroPneu(linhaExcel) {
+    try {
+      var modal = document.getElementById('modal-editar-pneu');
+      if (!modal) return alert("❌ Erro: A janela modal de edição não foi encontrada no HTML!");
+
+      var pneu = pneusGlobalCache.find(p => p.linhaOrigem === linhaExcel);
+      if(!pneu) return alert("❌ Erro: Pneu não localizado na memória do sistema. Tente atualizar a página.");
+
+      var selectVeiculo = document.getElementById('pn-edit-veiculo');
+      if (selectVeiculo) {
+        var htmlV = '<option value="-">📦 Almoxarifado / Nenhum</option>';
+        if (typeof frotaGlobal !== 'undefined') {
+          frotaGlobal.slice().sort((a,b) => a.prefixo.localeCompare(b.prefixo)).forEach(v => {
+            htmlV += `<option value="${v.prefixo}">${v.prefixo} (${v.placa})</option>`;
+          });
+        }
+        selectVeiculo.innerHTML = htmlV;
+      }
+
+      document.getElementById('pn-edit-linha').value = linhaExcel;
+      document.getElementById('pn-edit-fogo').value = pneu.numeroFogo;
+      document.getElementById('pn-edit-dot').value = pneu.dot;
+      document.getElementById('pn-edit-marca').value = pneu.marca;
+      document.getElementById('pn-edit-modelo').value = pneu.modelo;
+      document.getElementById('pn-edit-tamanho').value = pneu.tamanho;
+      document.getElementById('pn-edit-situacao').value = pneu.situacao;
+      document.getElementById('pn-edit-sulco').value = pneu.sulco;
+      document.getElementById('pn-edit-status').value = pneu.status;
+      document.getElementById('pn-edit-valor').value = pneu.valor;
+      
+      document.getElementById('pn-edit-km').value = parseFloat(pneu.kmRodado) || 0;
+
+      if (selectVeiculo) selectVeiculo.value = (pneu.veiculo && pneu.veiculo !== "") ? pneu.veiculo : "-";
+      document.getElementById('pn-edit-posicao').value = (pneu.posicao && pneu.posicao !== "") ? pneu.posicao : "-";
+
+      modal.style.display = 'flex';
+    } catch(e) {
+      alert("❌ Ocorreu um erro ao abrir a edição: " + e.message);
+    }
+  }
+
+  function enviarEdicaoPneu(event) {
+    event.preventDefault();
+    var linha = document.getElementById('pn-edit-linha').value;
+    
+    var dados = {
+      numeroFogo: document.getElementById('pn-edit-fogo').value,
+      dot: document.getElementById('pn-edit-dot').value,
+      marca: document.getElementById('pn-edit-marca').value,
+      modelo: document.getElementById('pn-edit-modelo').value,
+      tamanho: document.getElementById('pn-edit-tamanho').value,
+      situacao: document.getElementById('pn-edit-situacao').value,
+      sulco: document.getElementById('pn-edit-sulco').value,
+      status: document.getElementById('pn-edit-status').value,
+      veiculo: document.getElementById('pn-edit-veiculo').value || "-",
+      posicao: document.getElementById('pn-edit-posicao').value || "-",
+      valor: document.getElementById('pn-edit-valor').value,
+      kmRodado: document.getElementById('pn-edit-km').value 
+    };
+
+    var btn = event.submitter || document.querySelector('#formEditarPneu button[type="submit"]');
+    var txtOriginal = btn ? btn.innerText : "Salvar Alterações";
+    if (btn) { btn.innerText = "⏳ A gravar..."; btn.disabled = true; }
+
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      if(res.sucesso) {
+        fecharModal('modal-editar-pneu');
+        if(typeof carregarListaPneus === 'function') carregarListaPneus();
+      }
+      if (btn) { btn.innerText = txtOriginal; btn.disabled = false; }
+    }).withFailureHandler(function(erro) {
+      alert("❌ Erro de comunicação com o servidor.");
+      if (btn) { btn.innerText = txtOriginal; btn.disabled = false; }
+    }).atualizarDadosCadastroPneu(linha, dados);
+  }
+
+  function abrirHistoricoPneusVeiculo() {
+    try {
+      var select = document.getElementById('mov-veiculo-select');
+      if (!select) return alert("❌ Erro: Caixa de seleção de veículos não encontrada na tela.");
+      
+      var prefixo = select.value;
+      if (!prefixo) return alert("⚠️ Por favor, selecione primeiro um veículo no painel 1 para ver seu histórico!");
+
+      var modal = document.getElementById('modal-historico-pneus-veiculo');
+      if (!modal) return alert("❌ Erro: A janela modal de histórico não foi encontrada no HTML!");
+
+      var textoSelecionado = select.options[select.selectedIndex].text; 
+      var lblTitulo = document.getElementById('lbl-hist-titulo-veiculo');
+      if (lblTitulo) lblTitulo.innerText = textoSelecionado;
+
+      var tbody = document.getElementById('tbody-hist-pneus-veiculo');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="vazio-msg">Buscando histórico seguro na planilha...</td></tr>';
+      
+      modal.style.display = 'flex';
+
+      google.script.run.withSuccessHandler(function(lista) {
+        if (!tbody) return;
+        if (!lista || lista.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" class="vazio-msg">Nenhuma movimentação registrada para este caminhão.</td></tr>';
+          return;
+        }
+        var html = '';
+        lista.forEach(m => {
+          var badge = m.acao === 'INSTALAR' ? 'background:#dcfce7; color:#15803d;' : 'background:#fee2e2; color:#b91c1c;';
+          html += `<tr>
+            <td style="font-weight:bold; color:#64748b;">${m.id}</td>
+            <td>${m.data}</td>
+            <td style="font-weight:bold; color:#111827;">🔥 ${m.fogo}</td>
+            <td><span style="padding:2px 6px; border-radius:4px; font-weight:bold; font-size:10px; ${badge}">${m.acao}</span></td>
+            <td><strong>${m.posicao}</strong></td>
+            <td>${parseFloat(m.km || 0).toLocaleString('pt-BR')} KM</td>
+            <td>${m.sulco} mm</td>
+          </tr>`;
+        });
+        tbody.innerHTML = html;
+      }).withFailureHandler(function(erro){
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="vazio-msg" style="color:red;">❌ Falha ao buscar histórico.</td></tr>';
+      }).listarHistoricoMovimentacoesVeiculo(prefixo);
+    } catch(e) {
+      alert("❌ Ocorreu um erro ao abrir o histórico: " + e.message);
+    }
+  }
+
+  // ================= MÓDULO VISUAL: CHASSI, HISTÓRICO E EDIÇÃO =================
+  let pneuFogoSelecionado = null;
+  let cachePneusEstoque = [];
+  let cachePneusVeiculo = [];
+
+  function carregarFrotaParaMovimentacao() {
+    var select = document.getElementById('mov-veiculo-select');
+    
+    document.getElementById('painel-estoque-pneus').style.display = 'block';
+    document.getElementById('lista-pneus-disponiveis').innerHTML = '<p style="font-size:11px; color:#64748b;">Consultando estoque...</p>';
+    
+    google.script.run.withSuccessHandler(function(res) {
+      if(res.sucesso) {
+        cachePneusEstoque = res.disponiveis;
+        filtrarPneusEstoquePainel();
+      }
+    }).buscarPainelPneusVeiculo("");
+
+    if (typeof frotaGlobal === 'undefined' || frotaGlobal.length === 0) {
+      if (select) select.innerHTML = '<option value="" disabled selected>⏳ Carregando veículos da base de dados...</option>';
+      if (typeof carregarListaVeiculos === 'function') carregarListaVeiculos(); 
+      
+      var tentativas = 0;
+      var intervalo = setInterval(function() {
+        if (typeof frotaGlobal !== 'undefined' && frotaGlobal.length > 0) {
+          clearInterval(intervalo);
+          preencherDropdownMovimentacao();
+        }
+        tentativas++;
+        if(tentativas > 15) { 
+          clearInterval(intervalo); 
+          if(select) select.innerHTML = '<option value="" disabled selected>⚠️ Falha de conexão. Clique em Atualizar Dados.</option>';
+        }
+      }, 500);
+    } else {
+      preencherDropdownMovimentacao();
+    }
+  }
+
+  function preencherDropdownMovimentacao() {
+    var select = document.getElementById('mov-veiculo-select');
+    if (!select) return;
+    var html = '<option value="" disabled selected>Escolha um caminhão da frota...</option>';
+    frotaGlobal.slice().sort((a,b) => a.prefixo.localeCompare(b.prefixo)).forEach(v => { 
+      html += `<option value="${v.prefixo}">${v.prefixo} (${v.placa})</option>`; 
+    });
+    select.innerHTML = html;
+  }
+
+  function carregarChassiVeiculo(prefixo) {
+    document.getElementById('lbl-chassi-veiculo').innerText = prefixo;
+    document.getElementById('painel-chassi-caminhao').style.display = 'block';
+    document.getElementById('painel-estoque-pneus').style.display = 'block';
+    pneuFogoSelecionado = null;
+    atualizarUIFerramenta();
+
+    var veiculo = frotaGlobal.find(v => v.prefixo === prefixo);
+    if(veiculo) document.getElementById('lbl-placa-chassi-automovel').value = veiculo.placa;
+
+    document.querySelectorAll('.roda-slot').forEach(slot => {
+      slot.className = 'roda-slot'; slot.innerHTML = slot.id.replace('slot-', '');
+      slot.dataset.fogo = "";
+    });
+
+    document.getElementById('lista-pneus-disponiveis').innerHTML = '<p style="font-size:11px; color:#64748b;">Sincronizando...</p>';
+
+    google.script.run.withSuccessHandler(function(res) {
+      if(res.sucesso) {
+        cachePneusEstoque = res.disponiveis;
+        cachePneusVeiculo = res.instalados;
+        filtrarPneusEstoquePainel();
+
+        res.instalados.forEach(p => {
+           let slotId = converterPosicaoParaSlot(p.posicao);
+           let slot = document.getElementById(slotId);
+           if(slot) {
+             slot.className = 'roda-slot ocupada';
+             slot.innerHTML = `<span style="font-size:9px; color:#94a3b8;">${p.tamanho}</span><br>${p.fogo}`;
+             slot.dataset.fogo = p.fogo;
+           }
+        });
+      }
+    }).buscarPainelPneusVeiculo(prefixo);
+  }
+
+  function converterPosicaoParaSlot(posicaoStr) {
+    const mapa = {
+      'DIANTEIRO ESQUERDO': 'slot-DE', 'DIANTEIRO DIREITO': 'slot-DD',
+      'TRAÇÃO EXT ESQUERDA': 'slot-TEE', 'TRAÇÃO INT ESQUERDA': 'slot-TIE',
+      'TRAÇÃO INT DIREITA': 'slot-TID', 'TRAÇÃO EXT DIREITA': 'slot-TED',
+      'TRUCK EXT ESQUERDA': 'slot-TKE', 'TRUCK INT ESQUERDA': 'slot-TKI',
+      'TRUCK INT DIREITA': 'slot-TKD', 'TRUCK EXT DIREITA': 'slot-TCE'
+    };
+    return mapa[posicaoStr] || null;
+  }
+
+  function filtrarPneusEstoquePainel() {
+    try {
+      var inputBusca = document.getElementById('busca-pneu-estoque');
+      var termo = inputBusca ? inputBusca.value.toUpperCase().trim() : "";
+      var listaDiv = document.getElementById('lista-pneus-disponiveis');
+      var html = '';
+
+      if (!cachePneusEstoque || cachePneusEstoque.length === 0) {
+        listaDiv.innerHTML = '<p style="font-size:11px; color:#64748b;">Nenhum pneu em estoque no momento.</p>';
+        return;
+      }
+
+      cachePneusEstoque.forEach(p => {
+        var fogoStr = String(p.fogo || "").toUpperCase();
+        var tamanhoStr = String(p.tamanho || "").toUpperCase();
+
+        if(fogoStr.includes(termo) || tamanhoStr.includes(termo)) {
+          html += `
+            <div class="pneu-estoque-card" id="card-pneu-${p.fogo}" onclick="selecionarPneuEstoque('${p.fogo}', this)">
+              <div>
+                <strong style="display:block;">🔥 Fogo: ${p.fogo}</strong>
+                <span style="font-size:10px;">${p.marca} | ${p.tamanho}</span>
+              </div>
+              <span style="font-size:18px;">🛞</span>
+            </div>
+          `;
+        }
+      });
+      
+      listaDiv.innerHTML = html || '<p style="font-size:11px;">Nenhum pneu corresponde à busca.</p>';
+    } catch (e) {
+      console.error(e);
+      document.getElementById('lista-pneus-disponiveis').innerHTML = '<p style="color:red; font-size:11px;">❌ Falha interna ao processar estoque. Verifique os dados.</p>';
+    }
+  }
+
+  function selecionarPneuEstoque(fogo, elementoCard) {
+    document.querySelectorAll('.pneu-estoque-card').forEach(c => c.classList.remove('selecionado'));
+    elementoCard.classList.add('selecionado');
+    pneuFogoSelecionado = fogo;
+    atualizarUIFerramenta();
+  }
+
+  function atualizarUIFerramenta() {
+    var box = document.getElementById('ferramenta-ativa-box');
+    if (pneuFogoSelecionado) {
+      box.style.display = 'block';
+      document.getElementById('lbl-pneu-selecionado').innerText = pneuFogoSelecionado;
+    } else {
+      box.style.display = 'none';
+    }
+  }
+
+  function clicarRodaChassi(nomePosicao, slotId) {
+    var slot = document.getElementById(slotId);
+    var veiculoPrefix = document.getElementById('mov-veiculo-select').value;
+    
+    if (!slot.classList.contains('ocupada') && pneuFogoSelecionado) {
+      let kmInput = prompt(`Informe o KM atual do caminhão ${veiculoPrefix} para registrar a instalação do pneu ${pneuFogoSelecionado}:`);
+      if(kmInput === null) return; 
+      
+      let dadosMov = {
+        acao: "INSTALAR", fogo: pneuFogoSelecionado, veiculo: veiculoPrefix, 
+        posicao: nomePosicao, kmVeiculo: kmInput, sulco: "" 
+      };
+      executarMovimentacaoBackend(dadosMov);
+    }
+    else if (slot.classList.contains('ocupada')) {
+      let fogoInstalado = slot.dataset.fogo;
+      
+      let destino = prompt(`Retirar Pneu ${fogoInstalado} da posição ${nomePosicao}.\nPara onde ele vai?\n\nDigite 1 para ESTOQUE\nDigite 2 para RECAPE\nDigite 3 para SUCATA`);
+      if (!destino) return;
+      
+      let acaoMap = {"1":"ESTOQUE", "2":"RECAPE", "3":"SUCATA"};
+      let acaoFinal = acaoMap[destino];
+      if(!acaoFinal) return alert("Opção inválida. Cancelado.");
+
+      let kmInput = prompt(`Qual é o KM atual do caminhão ${veiculoPrefix}? (Isto fechará o ciclo de quilometragem do pneu)`);
+      if(kmInput === null) return;
+
+      let sulcoInput = prompt(`Qual é a medição do Sulco atual (em mm)?`);
+
+      let dadosMov = {
+        acao: acaoFinal, fogo: fogoInstalado, 
+        veiculo: veiculoPrefix,
+        posicao: nomePosicao, kmVeiculo: kmInput, sulco: sulcoInput 
+      };
+      executarMovimentacaoBackend(dadosMov);
+    }
+    else { alert("⚠️ Esta posição está vazia. Selecione um pneu do Estoque na lista à esquerda primeiro!"); }
+  }
+
+  function executarMovimentacaoBackend(dados) {
+    var veiculoPrefix = document.getElementById('mov-veiculo-select').value;
+    document.getElementById('painel-chassi-caminhao').style.opacity = "0.5";
+
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      document.getElementById('painel-chassi-caminhao').style.opacity = "1";
+      if(res.sucesso) carregarChassiVeiculo(veiculoPrefix);
+    }).registrarMovimentacaoPneu(dados);
+  }
+
+  function auditarRecalcularTodosKmPneus(btn) {
+    if(!confirm("Deseja que o Robô Auditor analise todo o histórico de movimentações e recalcule o KM Acumulado e o CPK de TODOS os pneus automaticamente?")) return;
+
+    var txtOrig = btn.innerText;
+    btn.innerText = "⏳ Auditando e Calculando..."; 
+    btn.disabled = true;
+    btn.style.opacity = "0.7";
+
+    google.script.run.withSuccessHandler(function(res){
+      alert(res.mensagem);
+      if(res.sucesso && typeof carregarListaPneus === 'function') {
+        carregarListaPneus(); 
+      }
+      btn.innerText = txtOrig; 
+      btn.disabled = false;
+      btn.style.opacity = "1";
+    }).withFailureHandler(function(erro){
+      alert("❌ Falha de comunicação com o servidor.");
+      btn.innerText = txtOrig; 
+      btn.disabled = false;
+      btn.style.opacity = "1";
+    }).auditarRecalcularTodosKmBackend();
+  }
+</script>

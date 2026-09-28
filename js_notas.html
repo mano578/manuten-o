@@ -1,0 +1,298 @@
+<script>
+  let notasFiscaisGlobal = [];
+  let notasFiscaisFiltradas = [];
+
+  function abrirModalNovaNotaFiscal() {
+    document.getElementById('formNotaFiscal').reset();
+    document.getElementById('modal-nova-nota-fiscal').style.display = 'flex';
+    var now = new Date();
+    var tzOffset = now.getTimezoneOffset() * 60000;
+    document.getElementById('nf-data').value = (new Date(now - tzOffset)).toISOString().slice(0,10);
+  }
+
+  function carregarListaNotasFiscais() {
+    var tbody = document.getElementById('tbody-lista-notas'); 
+    if(!tbody) return;
+    
+    if (!notasFiscaisGlobal || notasFiscaisGlobal.length === 0) {
+      // Ajustado para 7 colunas novamente
+      tbody.innerHTML = '<tr><td colspan="7" class="vazio-msg" style="padding:20px; text-align:center;">⏳ A sincronizar Notas Fiscais...</td></tr>';
+    }
+    
+    google.script.run.withSuccessHandler(function(lista) {
+      notasFiscaisGlobal = lista || [];
+      notasFiscaisFiltradas = [...notasFiscaisGlobal];
+      renderizarTabelaNotasFiscais(); 
+    }).withFailureHandler(function(err){
+      tbody.innerHTML = '<tr><td colspan="7" style="color:red; text-align:center;">❌ Falha na comunicação com o servidor.</td></tr>';
+    }).listarNotasFiscais();
+  }
+
+  function renderizarTabelaNotasFiscais() {
+    var tbody = document.getElementById('tbody-lista-notas'); if(!tbody) return;
+    if(!notasFiscaisFiltradas.length) { tbody.innerHTML = '<tr><td colspan="7" class="vazio-msg" style="padding:20px; text-align:center;">Nenhuma nota encontrada.</td></tr>'; return; }
+    
+    var html = '';
+    notasFiscaisFiltradas.forEach(n => {
+      if(!n) return;
+
+      var temComp = n.comprovante && String(n.comprovante).startsWith('http');
+      var temNf = n.nfDigital && String(n.nfDigital).startsWith('http');
+
+      // =========================================================
+      // STATUS EM FORMATO DE TEXTO (ENTRE PARÊNTESES)
+      // =========================================================
+      var statusText = '';
+      if (temComp && temNf) {
+          statusText = '<span style="color:#059669; font-size:11px; font-weight:bold; margin-left: 6px;">(✅ CONCLUÍDO)</span>';
+      } else if (temNf && !temComp) {
+          statusText = '<span style="color:#b45309; font-size:11px; font-weight:bold; margin-left: 6px;">(⏳ PGTO PENDENTE)</span>';
+      } else if (temComp && !temNf) {
+          statusText = '<span style="color:#b91c1c; font-size:11px; font-weight:bold; margin-left: 6px;">(⚠️ FALTA NOTA)</span>';
+      } else {
+          statusText = '<span style="color:#475569; font-size:11px; font-weight:bold; margin-left: 6px;">(❌ AGUARDANDO)</span>';
+      }
+
+      // Lógica dos Botões de Anexo
+      let btnComp = temComp ? 
+        `<div style="display:flex; gap:4px; align-items:center;">
+          <a href="${n.comprovante}" target="_blank" onclick="event.stopPropagation();" class="btn-anexo btn-anexo-view" style="padding:4px 8px; font-size:11px;" title="Ver">💾 Ver</a>
+          <button onclick="event.stopPropagation(); deletarAnexoNF(${n.rowIndex}, 'comprovante')" class="btn-anexo btn-anexo-delete" style="padding:4px 8px; font-size:11px;" title="Excluir">🗑️</button>
+         </div>` : 
+        `<button type="button" style="color: #d97706; background: #fef3c7; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; border: 1px solid #fde68a; cursor:pointer;" onclick="event.stopPropagation(); document.getElementById('file-nf-comp-${n.rowIndex}').click()">⚠️ Anexar</button>
+         <input type="file" id="file-nf-comp-${n.rowIndex}" style="display:none;" accept="image/*,.pdf" onclick="event.stopPropagation();" onchange="fazerUploadAnexoNFDetalhe(${n.rowIndex}, 'comprovante', this)">`;
+      
+      let btnNF = temNf ? 
+        `<div style="display:flex; gap:4px; align-items:center;">
+          <a href="${n.nfDigital}" target="_blank" onclick="event.stopPropagation();" class="btn-anexo btn-anexo-view" style="padding:4px 8px; font-size:11px;" title="Ver">💾 Ver</a>
+          <button onclick="event.stopPropagation(); deletarAnexoNF(${n.rowIndex}, 'nfDigital')" class="btn-anexo btn-anexo-delete" style="padding:4px 8px; font-size:11px;" title="Excluir">🗑️</button>
+         </div>` : 
+        `<button type="button" style="color: #d97706; background: #fef3c7; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; border: 1px solid #fde68a; cursor:pointer;" onclick="event.stopPropagation(); document.getElementById('file-nf-dig-${n.rowIndex}').click()">⚠️ Anexar</button>
+         <input type="file" id="file-nf-dig-${n.rowIndex}" style="display:none;" accept="image/*,.pdf" onclick="event.stopPropagation();" onchange="fazerUploadAnexoNFDetalhe(${n.rowIndex}, 'nfDigital', this)">`;
+
+      // Montagem da Linha (Com o Fornecedor + Status na mesma célula)
+      html += `<tr onclick="exibirEspelhoNota(${n.rowIndex})" style="cursor:pointer; transition: background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+        <td style="padding:10px;"><div style="font-weight:bold; color:#1e3a8a;">${n.id || "-"}</div></td>
+        <td style="padding:10px;"><strong>${n.fornecedor || "-"}</strong> ${statusText}</td>
+        <td style="padding:10px;">${n.data || "-"}</td>
+        <td style="padding:10px; color:#059669; font-weight:600;">R$ ${parseFloat(n.valor || 0).toFixed(2)}</td>
+        <td style="padding:10px;">${n.notaFiscal || "-"}</td>
+        <td style="padding:10px;">${btnComp}</td>
+        <td style="padding:10px;">${btnNF}</td>
+      </tr>`;
+    });
+    tbody.innerHTML = html;
+  }
+
+  function manipularBuscaNotasFiscais() {
+    var termo = document.getElementById("input-busca-notas").value.toLowerCase().trim();
+    if(termo === "") {
+        notasFiscaisFiltradas = [...notasFiscaisGlobal];
+    } else {
+        notasFiscaisFiltradas = notasFiscaisGlobal.filter(n => 
+            String(n.fornecedor || "").toLowerCase().includes(termo) ||
+            String(n.notaFiscal || "").toLowerCase().includes(termo) ||
+            String(n.id || "").toLowerCase().includes(termo)
+        );
+    }
+    renderizarTabelaNotasFiscais();
+  }
+
+  function exibirEspelhoNota(rowIndex) {
+    try {
+      var n = notasFiscaisGlobal.find(nota => nota.rowIndex === rowIndex);
+      if (!n) return;
+
+      document.getElementById('view-nota-id').innerText = n.id || "-";
+      document.getElementById('view-nota-fornecedor').innerText = n.fornecedor || "-";
+      document.getElementById('view-nota-data').innerText = n.data || "-";
+      document.getElementById('view-nota-valor').innerText = "R$ " + (parseFloat(n.valor) || 0).toFixed(2);
+      document.getElementById('view-nota-numero').innerText = n.notaFiscal || "Sem Número";
+
+      function montarBoxAnexo(tipo, url, idLinha) {
+        var box = document.getElementById(tipo === 'comprovante' ? 'view-nota-box-comprovante' : 'view-nota-box-digital');
+        if(!box) return;
+        var label = (tipo === 'comprovante') ? 'comprovante' : 'nfDigital';
+        
+        if (url) {
+          box.innerHTML = `<a href="${url}" target="_blank" style="background:#10b981; color:white; padding:6px 10px; border-radius:4px; text-decoration:none; font-weight:bold; font-size:11px;">💾 Ver Documento</a>
+                           <button onclick="deletarAnexoNF(${idLinha}, '${label}'); fecharModal('modal-detalhes-nota');" style="background:#ef4444; color:white; border:none; padding:6px 10px; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">🗑️</button>`;
+        } else {
+          box.innerHTML = `<button onclick="document.getElementById('file-upload-modal-${tipo}').click()" style="background:#f59e0b; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; font-size:11px; cursor:pointer;">⚠️ Anexar Ficheiro</button>
+                           <input type="file" id="file-upload-modal-${tipo}" style="display:none;" accept="image/*,.pdf" onchange="fazerUploadAnexoNFDetalhe(${idLinha}, '${label}', this); fecharModal('modal-detalhes-nota');">`;
+        }
+      }
+
+      montarBoxAnexo('comprovante', n.comprovante, n.rowIndex);
+      montarBoxAnexo('nfDigital', n.nfDigital, n.rowIndex);
+
+      // Liga os botões de ação do Rodapé
+      var btnEdit = document.getElementById('btn-view-nota-editar');
+      if(btnEdit) btnEdit.onclick = function() { fecharModal('modal-detalhes-nota'); abrirModalEditarNota(n.id, n.fornecedor, n.data, n.valor, n.notaFiscal); };
+
+      var btnDel = document.getElementById('btn-view-nota-excluir');
+      if(btnDel) btnDel.onclick = function() { if(confirm("Tem a certeza que deseja excluir a nota "+n.id+"?")) { fecharModal('modal-detalhes-nota'); acionarExcluirNota(n.rowIndex, n.id); } };
+
+      document.getElementById('modal-detalhes-nota').style.display = 'flex';
+    } catch(e) {
+      console.error("Erro ao desenhar o espelho da nota:", e);
+    }
+  }
+
+  function acionarExcluirNota(linha, idNota) {
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      if(res.sucesso) carregarListaNotasFiscais();
+    }).excluirNotaFiscalBackend(linha);
+  }
+
+  // ================= A MÁGICA DA EDIÇÃO ACONTECE AQUI =================
+  // ================= A MÁGICA DA EDIÇÃO COM AVALIAÇÃO DE STATUS =================
+  function abrirModalEditarNota(id, fornecedor, data, valor, numeroNota) {
+      document.getElementById('nf-edit-id').value = id || "";
+      document.getElementById('nf-edit-fornecedor').value = fornecedor || "";
+      document.getElementById('nf-edit-numero').value = (numeroNota !== "0" && numeroNota !== "-") ? numeroNota : "";
+
+      var dataInput = "";
+      if (data) {
+        var dataLimpa = data.split(" ")[0]; 
+        if (dataLimpa.includes("/")) {
+          var p = dataLimpa.split("/");
+          if(p.length === 3) dataInput = p[2] + "-" + p[1] + "-" + p[0];
+        } else if (dataLimpa.includes("-")) {
+          dataInput = dataLimpa; 
+        }
+      }
+      document.getElementById('nf-edit-data').value = dataInput;
+
+      var valorLimpo = String(valor || "0").replace("R$", "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+      document.getElementById('nf-edit-valor').value = parseFloat(valorLimpo).toFixed(2);
+
+      // PROCURA A NOTA NA MEMÓRIA PARA VERIFICAR OS ANEXOS
+      var listaNotas = typeof notasFiscaisGlobal !== 'undefined' ? notasFiscaisGlobal : [];
+      var n = listaNotas.find(nota => String(nota.id) === String(id) || String(nota.idNota) === String(id));
+      
+      var temComp = n && n.comprovante && String(n.comprovante).startsWith('http');
+      var temNf = n && n.nfDigital && String(n.nfDigital).startsWith('http');
+
+      // A LÓGICA DE STATUS QUE PEDIU
+      var badge = document.getElementById('badge-status-edicao');
+      if (temComp && temNf) {
+          badge.innerText = "✅ Concluído";
+          badge.style.background = "#d1fae5"; // Fundo verde claro
+          badge.style.color = "#065f46";      // Texto verde escuro
+      } else if (temNf && !temComp) {
+          badge.innerText = "⏳ Pagamento Pendente";
+          badge.style.background = "#fef3c7"; // Fundo amarelo claro
+          badge.style.color = "#b45309";      // Texto laranja
+      } else if (temComp && !temNf) {
+          badge.innerText = "⚠️ Falta Nota Fiscal";
+          badge.style.background = "#fee2e2"; // Fundo vermelho claro
+          badge.style.color = "#b91c1c";      // Texto vermelho escuro
+      } else {
+          badge.innerText = "❌ Aguardando Documentos";
+          badge.style.background = "#f1f5f9"; // Fundo cinzento
+          badge.style.color = "#475569";
+      }
+
+      // Diz especificamente o que falta em cima de cada botão de arquivo
+      var lblComp = document.getElementById('lbl-edit-status-comp');
+      lblComp.innerHTML = temComp ? 'Comprovante <span style="color:#059669;">(Anexado)</span>' : 'Comprovante <span style="color:#ef4444;">(Em Falta)</span>';
+
+      var lblNf = document.getElementById('lbl-edit-status-nf');
+      lblNf.innerHTML = temNf ? 'NF Digital <span style="color:#059669;">(Anexada)</span>' : 'NF Digital <span style="color:#ef4444;">(Em Falta)</span>';
+
+      // Limpa os inputs de ficheiros para não haver erros com as edições anteriores
+      document.getElementById('nf-edit-comp').value = ""; 
+      document.getElementById('nf-edit-dig').value = "";
+
+      document.getElementById('modal-editar-nota').style.display = 'flex';
+  }
+
+  function enviarEdicaoNota(event) {
+    event.preventDefault();
+    var idNota = document.getElementById('nf-edit-id').value;
+    
+    var dados = {
+      fornecedor: document.getElementById('nf-edit-fornecedor').value.toUpperCase(),
+      data: document.getElementById('nf-edit-data').value,
+      valor: document.getElementById('nf-edit-valor').value,
+      numeroNota: document.getElementById('nf-edit-numero').value || "-"
+    };
+
+    var btn = event.submitter || document.querySelector('#formEditarNota button[type="submit"]');
+    var txtOriginal = btn ? btn.innerText : "Salvar Alterações";
+    if (btn) { btn.innerText = "⏳ A gravar..."; btn.disabled = true; }
+
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      if (res.sucesso) {
+        fecharModal('modal-editar-nota');
+        if (typeof carregarListaNotasFiscais === 'function') carregarListaNotasFiscais(); 
+      }
+      if (btn) { btn.innerText = txtOriginal; btn.disabled = false; }
+    }).withFailureHandler(function(e) {
+      alert("Erro na comunicação com o servidor.");
+      if (btn) { btn.innerText = txtOriginal; btn.disabled = false; }
+    }).atualizarNotaFiscalBackend(idNota, dados);
+  }
+
+  // UPLOADS E REGISTO GERAL
+  async function enviarFormularioNotaFiscal(event) {
+    event.preventDefault();
+    var btn = document.getElementById('btn-submit-nf');
+    var file1 = document.getElementById('nf-comprovante').files[0];
+    var file2 = document.getElementById('nf-digital').files[0];
+
+    btn.classList.add('carregando'); btn.disabled = true;
+
+    var dados = {
+      fornecedor: document.getElementById('nf-fornecedor').value.toUpperCase(),
+      data: document.getElementById('nf-data').value,
+      notaFiscal: document.getElementById('nf-numero').value,
+      valor: document.getElementById('nf-valor').value,
+      fileBase64: "", fileName: "", fileMime: "",
+      fileBase64_2: "", fileName_2: "", fileMime_2: ""
+    };
+
+    if (file1) { let b1 = await toBase64(file1); dados.fileBase64 = b1.split(',')[1]; dados.fileName = file1.name; dados.fileMime = file1.type; }
+    if (file2) { let b2 = await toBase64(file2); dados.fileBase64_2 = b2.split(',')[1]; dados.fileName_2 = file2.name; dados.fileMime_2 = file2.type; }
+
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      if(res.sucesso) { document.getElementById('formNotaFiscal').reset(); fecharModal('modal-nova-nota-fiscal'); carregarListaNotasFiscais(); }
+      btn.classList.remove('carregando'); btn.disabled = false;
+    }).salvarNotaFiscalForm(dados);
+  }
+
+  function deletarAnexoNF(rowIndex, tipo) {
+    if(!confirm("Deseja excluir permanentemente este arquivo do registro?")) return;
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem); carregarListaNotasFiscais();
+    }).excluirArquivoNotaFiscal(rowIndex, tipo);
+  }
+
+  async function fazerUploadAnexoNFDetalhe(rowIndex, tipoAnexo, inputElem) {
+    if(!inputElem.files || inputElem.files.length === 0) return;
+    var file = inputElem.files[0];
+    var btn = inputElem.previousElementSibling;
+    var textoOriginal = btn.innerHTML;
+    btn.innerHTML = "⏳..."; btn.disabled = true;
+    
+    try {
+      let base64Full = await toBase64(file);
+      let base64Data = base64Full.split(',')[1];
+      
+      google.script.run.withSuccessHandler(function(res) {
+        alert(res.mensagem);
+        carregarListaNotasFiscais(); 
+      }).withFailureHandler(function(e) {
+        alert("Erro no upload: " + e);
+        btn.innerHTML = textoOriginal; btn.disabled = false; inputElem.value = '';
+      }).atualizarArquivoNotaFiscal(rowIndex, tipoAnexo, base64Data, file.type, file.name);
+    } catch(e) {
+      alert("Erro ao ler arquivo.");
+      btn.innerHTML = textoOriginal; btn.disabled = false; inputElem.value = '';
+    }
+  }
+</script>

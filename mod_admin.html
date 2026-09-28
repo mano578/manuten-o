@@ -1,0 +1,160 @@
+<div id="aba-admin" class="aba-tela" style="display:none;">
+          <h1 class="titulo-tela">👑 Administração do Sistema</h1>
+          
+          <div class="grid-admin-layout" style="margin-top: 30px;">
+            
+            <div style="display: flex; flex-direction: column; gap: 24px;">
+              <div class="admin-card">
+                <h3>🔔 Notificações: Redefinição</h3>
+                <div id="lista-notificacoes-admin" style="margin-top: 15px; max-height: 400px; overflow-y: auto;">
+                  <p style="color:#64748b; font-style:italic; font-size: 13px;">Nenhuma solicitação pendente.</p>
+                </div>
+              </div>
+
+              <div class="admin-card">
+                <h3>👥 Usuários Cadastrados</h3>
+                <div id="grid-usuarios-avatar" class="grid-usuarios-avatar">
+                  <div style="grid-column: 1 / -1; text-align: center; color: #64748b; padding: 20px;">⏳ Buscando usuários...</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="admin-card">
+              <h3>Cadastrar Usuário</h3>
+              <div class="input-group"><label>Nome</label><input type="text" id="cad-nome"></div>
+              <div class="input-group"><label>Acesso (Usuário)</label><input type="text" id="cad-usuario" style="text-transform: lowercase;"></div>
+              
+              <div class="input-group"><label>Senha Inicial</label>
+                <div class="senha-wrapper">
+                  <input type="password" id="cad-senha" placeholder="••••••••">
+                  <span class="toggle-senha" onclick="toggleSenhaAdmin('cad-senha', this)" title="Mostrar/Ocultar Senha">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                  </span>
+                </div>
+              </div>
+              
+              <div class="input-group">
+  <label>Permissões de Acesso (Selecione as abas) *</label>
+  <div id="cad-permissoes-box" class="grid-permissoes">
+    <label><input type="checkbox" class="chk-perm" value="tudo"> 👑 TUDO (Acesso Total)</label>
+    <label><input type="checkbox" class="chk-perm" value="admin"> 👑 Painel Admin</label>
+    <label><input type="checkbox" class="chk-perm" value="calendario-frota"> 📅 Calendário Frota</label>
+    <label><input type="checkbox" class="chk-perm" value="painel-geral"> 📊 Painel Geral</label>
+    <label><input type="checkbox" class="chk-perm" value="funcionarios"> 👥 Funcionários</label>
+    <label><input type="checkbox" class="chk-perm" value="atestados"> 🩺 Atestados</label>
+    <label><input type="checkbox" class="chk-perm" value="advertencias"> ⚠️ Advertências</label>
+    <label><input type="checkbox" class="chk-perm" value="suspensoes"> 🛑 Suspensões</label>
+    <label><input type="checkbox" class="chk-perm" value="escala-trabalho"> 📅 Escala</label>
+    <label><input type="checkbox" class="chk-perm" value="abastecimento"> ⛽ Abastecimento</label>
+    <label><input type="checkbox" class="chk-perm" value="custos-frota"> 💰 Custos Frota</label>
+    <label><input type="checkbox" class="chk-perm" value="lista-veiculos"> 🚘 Frota Cadastrada</label>
+    <label><input type="checkbox" class="chk-perm" value="sos"> 🚨 Central SOS</label>
+    <label><input type="checkbox" class="chk-perm" value="lavagem"> 💦 Lavagem</label>
+    <label><input type="checkbox" class="chk-perm" value="notas-fiscais"> 🧾 Notas Fiscais</label>
+    <label><input type="checkbox" class="chk-perm" value="toneladas-frota"> ⚖️ Toneladas</label>
+    <label><input type="checkbox" class="chk-perm" value="ordem-servico"> 🛠️ O.S.</label>
+    <label><input type="checkbox" class="chk-perm" value="cadastro-pneu"> 🛞 Pneus</label>
+    <label><input type="checkbox" class="chk-perm" value="aplicar-pneus"> ⚙️ Aplicar Pneus</label>
+    <label><input type="checkbox" class="chk-perm" value="gerencia-frota"> ⚙️ Gerencia Frota</label>
+  </div>
+</div>
+              
+              <div class="manter-conectado-group" style="margin-bottom: 20px; margin-top: 10px;">
+                <input type="checkbox" id="cad-troca-livre">
+                <label for="cad-troca-livre">Permitir que o usuário altere a senha</label>
+              </div>
+              <button class="btn-salvar" onclick="cadastrarNovoUsuario()">➕ Criar Usuário</button>
+            </div>
+          </div>
+
+          <h2 style="margin-top: 40px; margin-bottom: 20px; font-size: 18px; color: #1e293b; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">⚙️ Ferramentas do Sistema</h2>
+          
+          <div class="grid-admin-tools">
+            
+            <div class="admin-card">
+              <h3>📁 Driver do Sistema</h3>
+              <p style="font-size: 12px; color:#64748b; margin-bottom:5px;">Guarde ficheiros na nuvem.</p>
+              <!-- NOVO (adicionado nesta revisão, não substitui nada existente): estatísticas
+                   rápidas do Driver, preenchidas por obterEstatisticasDriver (função nova). -->
+              <p id="driver-stats-resumo" style="font-size: 11px; color:#94a3b8; margin-bottom:12px;">Carregando estatísticas...</p>
+              <div style="margin-bottom: 15px;">
+                <input type="file" id="input-driver-files" multiple>
+              </div>
+              <button class="btn-salvar" id="btn-upload-driver" onclick="enviarArquivosDriver()" style="background: #0ea5e9; width: 100%;"><span class="btn-text">Fazer Upload</span></button>
+              <!-- NOVO (adicionado nesta revisão, não substitui nada existente): busca por nome
+                   dentro dos arquivos do Driver, usando a função nova buscarArquivosDriverPorNome. -->
+              <input type="text" id="input-busca-driver" placeholder="🔎 Buscar arquivo por nome..." oninput="filtrarListaDriver()" style="width:100%; margin-top:12px; padding:8px 10px; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; box-sizing:border-box;">
+              <div id="lista-arquivos-driver" style="margin-top: 15px; max-height: 200px; overflow-y: auto;"></div>
+            </div>
+            
+            <div class="admin-card">
+              <h3>💾 Backup Automático</h3>
+              <p style="font-size: 12px; color:#64748b; margin-bottom:15px;">Cópia exata com 1 clique.</p>
+              <button class="btn-salvar" id="btn-gerar-backup" onclick="gerarBackup()" style="background: #a855f7; width: 100%; margin-bottom: 15px;"><span class="btn-text">Gerar Backup Agora</span></button>
+              <div id="lista-backups-salvos" style="max-height: 200px; overflow-y: auto;"></div>
+            </div>
+
+          </div>
+        </div>
+
+<div class="modal-overlay" id="modal-editar-usuario" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999;">
+  <div class="modal-box" style="max-width: 400px; padding: 25px;">
+    <h3>✏️ Editar Usuário</h3>
+    <input type="hidden" id="edit-user-id">
+    <div class="input-group"><label>Nome</label><input type="text" id="edit-user-nome"></div>
+    <div class="input-group"><label>Permissões</label><input type="text" id="edit-user-perm"></div>
+    <div class="input-group"><label>Senha Admin para confirmar *</label><input type="password" id="edit-user-senha-admin" placeholder="Sua senha atual"></div>
+    <button class="btn-salvar" onclick="confirmarEdicaoUsuario()">Salvar Alterações</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-trocar-senha-user" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999;">
+  <div class="modal-box" style="max-width: 450px; width: 90%; background: white; border-radius: 12px; margin: auto; padding: 25px; position: relative;">
+    <div class="modal-header">
+      <h2>Trocar Minha Senha</h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-trocar-senha-user')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size: 13px; color: #64748b; margin-bottom: 20px;">Informe o seu usuário e o seu nome exato no sistema para confirmar sua identidade.</p>
+      <div class="input-group">
+        <label>O seu Usuário *</label>
+        <input type="text" id="troca-user" placeholder="Ex: joao.silva">
+      </div>
+      <div class="input-group">
+        <label>O seu Nome Completo *</label>
+        <input type="text" id="troca-nome" placeholder="Ex: João da Silva">
+      </div>
+      <div class="input-group">
+        <label>Nova Senha Desejada *</label>
+        <input type="password" id="troca-novasenha" placeholder="Digite a nova senha">
+      </div>
+      <button class="btn-salvar" style="width: 100%; margin-top: 15px; background: #10b981;" id="btn-submit-troca" onclick="solicitarTrocaSenhaAutonoma()">Atualizar Senha</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-admin-redefinir-senha" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999;">
+  <div class="modal-box" style="max-width: 400px; width: 90%; background: white; border-radius: 12px; margin: auto; padding: 25px; position: relative;">
+    <div class="modal-header">
+      <h2>🔑 Redefinir Senha</h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-admin-redefinir-senha')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size: 13px; color: #64748b; margin-bottom: 20px;">Defina a nova senha para o Usuário que solicitou a troca.</p>
+      
+      <div class="input-group">
+        <label>Usuário Solicitante</label>
+        <input type="text" id="admin-reset-user" readonly style="background:#f1f5f9; color:#475569; font-weight:bold; border: 1px solid #cbd5e1;">
+      </div>
+      
+      <div class="input-group">
+        <label>Nova Senha *</label>
+        <input type="password" id="admin-reset-novasenha" placeholder="Digite a nova senha aqui...">
+      </div>
+      
+      <input type="hidden" id="admin-reset-linha"> 
+      
+      <button class="btn-salvar" style="width: 100%; margin-top: 15px; background: #10b981;" id="btn-submit-admin-reset" onclick="confirmarRedefinicaoSenhaAdmin()">Salvar Nova Senha e Dar Baixa</button>
+    </div>
+  </div>
+</div>

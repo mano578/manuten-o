@@ -1,0 +1,462 @@
+<script>
+  // ============================================================================
+  // VARIÁVEIS GLOBAIS
+  // ============================================================================
+  const VALIDADE_SESSAO = 4 * 60 * 60 * 1000; // 4 Horas
+  let usuarioLogado = ""; 
+  let frotaGlobal = []; let frotaFiltrada = []; let ordenacaoAtual = { coluna: '', direcao: 'asc' };
+  let funcionariosGlobal = []; let funcFiltrados = []; let ordenacaoFunc = { coluna: 'nome', direcao: 'asc' };
+  let funcSelecionadoParaRH = null;
+  let sosGlobalCache = []; 
+  let escalasGlobais = [];
+  let abastecimentosLoteGlobal = []; 
+  let custosGlobal = []; let custosFiltrados = [];
+  let toneladasGlobal = []; 
+  let toneladasLoteGlobal = []; 
+
+  // ================= FUNÇÃO GLOBAL: AUTO-PREENCHER PLACA A PARTIR DO PREFIXO =================
+  // NOTA (revisão): esta função estava duplicada em JS_Frota.html e JS_Lavagem.html
+  // (versões quase idênticas). Consolidada aqui em JS_Global.html como função única e
+  // compartilhada, usando a versão com verificação de elemento inexistente e o
+  // fallback "Não Encontrada", que é a mais segura das duas.
+  function preencherPlacaAutomatica(prefixoSelecionado, idCampoPlaca) {
+    var inputPlaca = document.getElementById(idCampoPlaca);
+    if (!inputPlaca) return;
+    if (typeof frotaGlobal !== 'undefined') {
+      var veiculo = frotaGlobal.find(v => v.prefixo === prefixoSelecionado);
+      inputPlaca.value = veiculo ? veiculo.placa : "Não Encontrada";
+    }
+  }
+
+  // ================= 1. INICIALIZAÇÃO E EVENTOS DE TECLADO (ENTER) =================
+  // NOTA (revisão - CORREÇÃO DO BUG "NO CELULAR PRECISA ATUALIZAR A PÁGINA"):
+  // A inicialização foi extraída para a função nomeada iniciarTelaLogin(), para poder
+  // ser chamada tanto no carregamento normal (window.onload) quanto quando o
+  // navegador MOBILE restaura a página a partir do "back-forward cache" (bfcache) -
+  // por exemplo ao trocar de app e voltar ao navegador, ou usar o botão "voltar".
+  // Nesse caso o evento "load"/"onload" NÃO dispara de novo (o navegador só repinta a
+  // página congelada), mas o canal de comunicação google.script.run, que roda dentro
+  // de um iframe sandbox do Apps Script, fica "morto" - por isso a tela ficava
+  // travada/branca e só funcionava depois de um refresh manual. O evento "pageshow"
+  // dispara SEMPRE, inclusive na restauração via bfcache, e event.persisted é true
+  // exatamente nesse caso. Forçamos um reload real da página para reconstruir o
+  // iframe do Apps Script e restaurar a comunicação com o servidor sem exigir que o
+  // usuário atualize manualmente.
+  function iniciarTelaLogin() {
+    var sessaoAtiva = localStorage.getItem('token_login_frota');
+    if (sessaoAtiva) {
+      var dadosSessao = JSON.parse(sessaoAtiva);
+      if (new Date().getTime() - dadosSessao.timestamp < VALIDADE_SESSAO) { 
+        tratarRetornoLogin(dadosSessao.resposta, true); 
+        return; 
+      } else { 
+        localStorage.removeItem('token_login_frota'); 
+      }
+    }
+    document.getElementById('tela-login').style.display = 'flex';
+
+    // Inteligência para fazer login apertando ENTER
+    var iptUser = document.getElementById('ipt-usuario');
+    var iptSenha = document.getElementById('ipt-senha');
+    
+    if(iptUser) {
+      iptUser.addEventListener('keypress', function(e) { if (e.key === 'Enter') fazerLogin(); });
+    }
+    if(iptSenha) {
+      iptSenha.addEventListener('keypress', function(e) { if (e.key === 'Enter') fazerLogin(); });
+    }
+  }
+
+  window.onload = iniciarTelaLogin;
+
+  // Corrige o bug do celular: se a página voltar de bfcache (persisted === true),
+  // o "onload" não roda de novo e a ligação com o servidor fica travada.
+  // Um reload real resolve sem depender do usuário atualizar manualmente.
+  window.addEventListener('pageshow', function(event) {
+    if (event.persisted) {
+      location.reload();
+    }
+  });
+
+  // Watchdog de segurança: se por qualquer outro motivo (rede lenta no celular,
+  // navegador que não dispara "load" a tempo, etc.) nem a tela de login nem o painel
+  // principal aparecerem em alguns segundos, força um reload automático em vez de
+  // deixar o usuário com a tela em branco/travada precisando atualizar manualmente.
+  setTimeout(function() {
+    var telaLogin = document.getElementById('tela-login');
+    var painelPrincipal = document.getElementById('sistema-principal');
+    var loginVisivel = telaLogin && telaLogin.style.display !== 'none' && telaLogin.style.display !== '';
+    var painelVisivel = painelPrincipal && painelPrincipal.style.display !== 'none' && painelPrincipal.style.display !== '';
+    if (!loginVisivel && !painelVisivel) {
+      location.reload();
+    }
+  }, 6000);
+
+  // ================= 2. MOTOR DE LOGIN E AUTENTICAÇÃO =================
+  function fazerLogin() {
+    var usu = document.getElementById('ipt-usuario').value;
+    var sen = document.getElementById('ipt-senha').value;
+    
+    if(!usu || !sen) {
+      document.getElementById('login-erro').innerText = "Preencha o utilizador e a senha.";
+      document.getElementById('login-erro').style.display = 'block';
+      return;
+    }
+    
+    document.getElementById('btn-entrar').innerText = "A validar credenciais..."; 
+    document.getElementById('login-erro').style.display = 'none';
+    
+    google.script.run
+      .withSuccessHandler(function(res) { tratarRetornoLogin(res, false); })
+      .withFailureHandler(function(err) {
+         document.getElementById('login-erro').innerText = "❌ Falha de conexão com o servidor.";
+         document.getElementById('login-erro').style.display = 'block';
+         document.getElementById('btn-entrar').innerText = "Acessar Sistema";
+      })
+      .validarLogin(usu, sen);
+  }
+
+  function tratarRetornoLogin(resposta, logadoViaSessao) {
+    if (resposta.sucesso) {
+      document.getElementById('tela-login').style.display = 'none'; 
+      document.getElementById('sistema-principal').style.display = 'flex';
+      document.getElementById('nome-usuario').innerText = resposta.nome; 
+      usuarioLogado = resposta.usuario;
+      
+      if (!logadoViaSessao && document.getElementById('chk-manter').checked) {
+        localStorage.setItem('token_login_frota', JSON.stringify({ timestamp: new Date().getTime(), resposta: resposta }));
+      }
+      
+      aplicarPermissoes(resposta.permissoes); 
+      if(typeof atualizarPainelPlanilha === 'function') atualizarPainelPlanilha(); 
+      if(typeof carregarAlertasSOS === 'function') carregarAlertasSOS(); 
+      if(typeof carregarFrotaParaSelects === 'function') carregarFrotaParaSelects(); 
+      if(typeof carregarListaFuncionarios === 'function') carregarListaFuncionarios(); 
+      preencherDataHoraAtual(); 
+      
+      // Se tiver a função de painel, roda de 10 em 10 seg
+      if(typeof atualizarPainelPlanilha === 'function') setInterval(atualizarPainelPlanilha, 10000); 
+
+      // PRÉ-CARREGAMENTO SILENCIOSO DE TODAS AS ABAS
+      setTimeout(function() {
+        if(typeof carregarListaVeiculos === 'function') carregarListaVeiculos();
+        if(typeof carregarListaNotasFiscais === 'function') carregarListaNotasFiscais();
+        if(typeof carregarHistoricoCustos === 'function') carregarHistoricoCustos();
+        if(typeof carregarListaPneus === 'function') carregarListaPneus();
+        if(typeof carregarListaOS === 'function') carregarListaOS();
+        if(typeof carregarHistoricoLavagens === 'function') carregarHistoricoLavagens();
+      }, 1500); 
+      
+    } else {
+      document.getElementById('btn-entrar').innerText = "Acessar Sistema"; 
+      document.getElementById('login-erro').innerText = "❌ " + resposta.mensagem; 
+      document.getElementById('login-erro').style.display = 'block';
+    }
+  }
+
+  function fazerLogout() { 
+    localStorage.removeItem('token_login_frota'); 
+    localStorage.removeItem('ultimaAbaInovar');
+    usuarioLogado = "";
+    document.getElementById('sistema-principal').style.display = 'none';
+    document.getElementById('tela-login').style.display = 'flex';
+    document.getElementById('ipt-usuario').value = '';
+    document.getElementById('ipt-senha').value = '';
+    document.getElementById('login-erro').style.display = 'none';
+    document.querySelector('.sidebar').classList.remove('aberta'); 
+    var overlay = document.getElementById('overlay-menu');
+    if(overlay) overlay.classList.remove('ativa');
+  }
+
+  function toggleSenha() {
+    var ipt = document.getElementById('ipt-senha'), icone = document.getElementById('icone-senha');
+    if (ipt.type === "password") { 
+      ipt.type = "text"; 
+      icone.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>'; 
+    } else { 
+      ipt.type = "password"; 
+      icone.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>'; 
+    }
+  }
+
+  // ================= 3. CONTROLE DE NAVEGAÇÃO E MEMÓRIA =================
+  function alternarAba(idAba, botaoClicado) {
+    localStorage.setItem('ultimaAbaInovar', idAba);
+
+    var telas = document.getElementsByClassName('aba-tela'); 
+    for (var i = 0; i < telas.length; i++) {
+        telas[i].classList.remove('ativa');
+        telas[i].style.display = 'none';
+    }
+
+    var botoesMenu = document.getElementsByClassName('menu-item'); 
+    for (var i = 0; i < botoesMenu.length; i++) {
+        botoesMenu[i].classList.remove('ativo');
+    }
+    
+    var telaAlvo = document.getElementById('aba-' + idAba);
+    if(telaAlvo) {
+        telaAlvo.style.display = 'block';
+        setTimeout(() => telaAlvo.classList.add('ativa'), 10);
+    }
+
+    if(botaoClicado) { 
+        botaoClicado.classList.add('ativo'); 
+    } else { 
+        var b = document.querySelector('[data-aba="'+idAba+'"]'); 
+        if(b) b.classList.add('ativo'); 
+    }
+    
+    fecharMenuMobileAoClicar();
+    
+    // Puxa os dados corretos do banco de dados na hora exata
+    if (idAba === 'admin') { 
+        if(typeof carregarNotificacoesAdmin === 'function') carregarNotificacoesAdmin(); 
+        if(typeof carregarListaDriver === 'function') carregarListaDriver(); 
+        if(typeof carregarListaBackups === 'function') carregarListaBackups(); 
+        if(typeof carregarNotificacoesSenha === 'function') carregarNotificacoesSenha(); 
+    }
+    if (idAba === 'lista-veiculos') { if(typeof carregarListaVeiculos === 'function') carregarListaVeiculos(); }
+    if (idAba === 'funcionarios') { if(typeof carregarListaFuncionarios === 'function') carregarListaFuncionarios(); }
+    if (idAba === 'escala-trabalho') { if(typeof carregarPainelEscalasVisuais === 'function') carregarPainelEscalasVisuais(); }
+    if (idAba === 'abastecimento') { if(typeof carregarListaAbastecimentos === 'function') carregarListaAbastecimentos(); }
+    if (idAba === 'custos-frota') { if(typeof carregarListaCustos === 'function') carregarListaCustos(); }
+    if (idAba === 'notas-fiscais') { if(typeof carregarListaNotasFiscais === 'function') carregarListaNotasFiscais(); }
+    if (idAba === 'toneladas-frota') { if(typeof carregarListaToneladas === 'function') carregarListaToneladas(); }
+    if (idAba === 'sos') { if(typeof carregarListaSOS === 'function') carregarListaSOS(); }
+    if (idAba === 'painel-geral') { if(typeof carregarAlertasSOS === 'function') carregarAlertasSOS(); }
+    if (idAba === 'ordem-servico') { if(typeof carregarListaOS === 'function') carregarListaOS(); }
+    if (idAba === 'cadastro-pneu') { if(typeof carregarListaPneus === 'function') carregarListaPneus(); }
+    if (idAba === 'mov-pneus') { if(typeof carregarFrotaParaMovimentacao === 'function') carregarFrotaParaMovimentacao(); }
+    if (idAba === 'calendario-frota') { if(typeof iniciarModuloCalendario === 'function') iniciarModuloCalendario(); }
+    if (idAba === 'checklist-diario') { if(typeof carregarListaChecklists === 'function') carregarListaChecklists(); }
+  }
+
+  function aplicarPermissoes(permissoesUsuario) {
+    var permissoesLimpas = String(permissoesUsuario || "").toLowerCase().replace(/_/g, '-').replace(/\s/g, '-');
+    var itensMenu = document.querySelectorAll('.menu-item'); 
+    
+    var primeiraAbaLiberada = null;
+    var abaParaAbrir = null;
+    var abaSalvaNaMemoria = localStorage.getItem('ultimaAbaInovar'); 
+    var isAdmin = permissoesLimpas.includes('tudo') || permissoesLimpas.includes('admin');
+    
+    itensMenu.forEach(function(item) {
+      var idAba = item.getAttribute('data-aba');
+      var temAcesso = false;
+
+      if (idAba === 'admin') {
+        temAcesso = isAdmin;
+      } else if (idAba === 'cadastros') {
+        temAcesso = false; 
+      } else if (isAdmin || permissoesLimpas.includes(idAba)) {
+        temAcesso = true;
+      }
+      
+      if (temAcesso) {
+        item.style.display = 'flex'; 
+        if (!primeiraAbaLiberada) primeiraAbaLiberada = item; 
+        if (idAba === abaSalvaNaMemoria) abaParaAbrir = item; 
+      } else {
+        item.style.display = 'none';
+      }
+    });
+    
+    if (abaParaAbrir) {
+      abaParaAbrir.click();
+    } else if (primeiraAbaLiberada) {
+      primeiraAbaLiberada.click();
+    }
+  }
+
+  // ================= 4. CONTROLO DO MENU MOBILE =================
+  function toggleMenu() {
+    var sidebar = document.querySelector('.sidebar');
+    var overlay = document.getElementById('overlay-menu');
+    
+    if (sidebar.classList.contains('aberta')) {
+      sidebar.classList.remove('aberta');
+      if(overlay) overlay.classList.remove('ativa');
+    } else {
+      sidebar.classList.add('aberta');
+      if(overlay) overlay.classList.add('ativa');
+    }
+  }
+
+  function fecharMenuMobileAoClicar() {
+    if (window.innerWidth <= 768) {
+      var sidebar = document.querySelector('.sidebar');
+      var overlay = document.getElementById('overlay-menu');
+      if(sidebar) sidebar.classList.remove('aberta');
+      if(overlay) overlay.classList.remove('ativa');
+    }
+  }
+
+  // ================= 5. MÓDULO DE SINCRONIZAÇÃO GLOBAL =================
+  function sincronizarAbaAtual() {
+    var btn = document.getElementById('btn-global-sync');
+    var txtSpan = document.getElementById('texto-sync-btn');
+    var icone = document.getElementById('icone-sync-anim');
+    
+    if(btn) {
+        btn.disabled = true;
+        btn.style.background = "#f8fafc";
+        btn.style.color = "#64748b";
+        if(txtSpan) txtSpan.innerText = "A sincronizar...";
+        if(icone) icone.innerText = "⏳";
+    }
+
+    var abaAtiva = localStorage.getItem('ultimaAbaInovar') || 'painel-geral';
+    
+    if (abaAtiva === 'admin') { 
+        if(typeof carregarNotificacoesAdmin === 'function') carregarNotificacoesAdmin(); 
+        if(typeof carregarListaDriver === 'function') carregarListaDriver(); 
+        if(typeof carregarListaBackups === 'function') carregarListaBackups(); 
+        if(typeof carregarNotificacoesSenha === 'function') carregarNotificacoesSenha(); 
+    }
+    else if (abaAtiva === 'lista-veiculos') { if(typeof carregarListaVeiculos === 'function') carregarListaVeiculos(); }
+    else if (abaAtiva === 'funcionarios') { if(typeof carregarListaFuncionarios === 'function') carregarListaFuncionarios(); }
+    else if (abaAtiva === 'escala-trabalho') { if(typeof carregarPainelEscalasVisuais === 'function') carregarPainelEscalasVisuais(); }
+    else if (abaAtiva === 'calendario-frota') { if(typeof gerarCalendarioUI === 'function') gerarCalendarioUI(); }
+    else if (abaAtiva === 'abastecimento') { if(typeof carregarListaAbastecimentos === 'function') carregarListaAbastecimentos(); }
+    else if (abaAtiva === 'custos-frota') { if(typeof carregarListaCustos === 'function') carregarListaCustos(); }
+    else if (abaAtiva === 'notas-fiscais') { if(typeof carregarListaNotasFiscais === 'function') carregarListaNotasFiscais(); }
+    else if (abaAtiva === 'toneladas-frota') { if(typeof carregarListaToneladas === 'function') carregarListaToneladas(); }
+    else if (abaAtiva === 'sos') { if(typeof carregarListaSOS === 'function') carregarListaSOS(); }
+    else if (abaAtiva === 'ordem-servico') { if(typeof carregarListaOS === 'function') carregarListaOS(); }
+    else if (abaAtiva === 'cadastro-pneu') { if(typeof carregarListaPneus === 'function') carregarListaPneus(); }
+    else if (abaAtiva === 'mov-pneus') { if(typeof carregarFrotaParaMovimentacao === 'function') carregarFrotaParaMovimentacao(); }
+    else if (abaAtiva === 'painel-geral') { 
+        if(typeof carregarAlertasSOS === 'function') carregarAlertasSOS(); 
+        if(typeof atualizarPainelPlanilha === 'function') atualizarPainelPlanilha(); 
+    }
+
+    setTimeout(function() {
+        if(btn) {
+            btn.disabled = false;
+            btn.style.background = "#ffffff";
+            btn.style.color = "#1e293b";
+            if(txtSpan) txtSpan.innerText = "Atualizar Dados";
+            if(icone) icone.innerText = "🔄";
+        }
+    }, 1500);
+  }
+
+  // ================= 6. UTILITÁRIOS =================
+  function fecharModal(id) { 
+    var mod = document.getElementById(id);
+    if(mod) mod.style.display = 'none'; 
+  }
+
+  function preencherDataHoraAtual() {
+    var now = new Date(); var tzOffset = now.getTimezoneOffset() * 60000; 
+    var localISOTime = (new Date(now - tzOffset)).toISOString().slice(0,16); 
+    var d1 = document.getElementById('sos-data'); if(d1 && !d1.value) d1.value = localISOTime;
+    var d2 = document.getElementById('lav-data'); if(d2 && !d2.value) d2.value = localISOTime;
+    var d3 = document.getElementById('escala-data'); if(d3 && !d3.value) d3.value = localISOTime.split('T')[0];
+    var d4 = document.getElementById('abs-data'); if(d4 && !d4.value) d4.value = localISOTime.split('T')[0];
+  }
+
+  // ================= 7. FLUXO DE RECUPERAÇÃO DE SENHA =================
+  function iniciarRecuperacaoSenha(event) {
+    if(event) event.preventDefault(); 
+
+    var usuarioDigitado = document.getElementById('ipt-usuario').value;
+
+    if (!usuarioDigitado || usuarioDigitado.trim() === "") {
+      alert("⚠️ ATENÇÃO: Digite primeiro o seu USUÁRIO no campo acima e depois clique em 'Esqueceu a senha?'.");
+      document.getElementById('ipt-usuario').focus(); 
+      return;
+    }
+
+    var linkEsqueci = document.querySelector('.link-esqueci a'); 
+    var txtOriginal = linkEsqueci ? linkEsqueci.innerText : "Esqueceu a senha?";
+    if (linkEsqueci) {
+        linkEsqueci.innerText = "⏳ A verificar..."; 
+        linkEsqueci.style.pointerEvents = "none";
+    }
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (linkEsqueci) {
+            linkEsqueci.innerText = txtOriginal; 
+            linkEsqueci.style.pointerEvents = "auto";
+        }
+        
+        if (!res.sucesso) {
+          alert("❌ Erro: " + res.mensagem);
+        } else {
+          if (res.permite) {
+            document.getElementById('modal-trocar-senha-user').style.display = 'flex';
+            document.getElementById('troca-user').value = usuarioDigitado;
+            document.getElementById('troca-nome').focus();
+          } else {
+            alert("🔒 Acesso Restrito!\n\n" + res.mensagem);
+          }
+        }
+      })
+      .withFailureHandler(function(erro) {
+        if (linkEsqueci) { linkEsqueci.innerText = txtOriginal; linkEsqueci.style.pointerEvents = "auto"; }
+        alert("❌ Ocorreu uma falha ao conectar com o banco de dados.");
+      })
+      .solicitarRecuperacaoSenhaBackend(usuarioDigitado);
+  }
+
+  function solicitarTrocaSenhaAutonoma() {
+    var user = document.getElementById('troca-user').value;
+    var nome = document.getElementById('troca-nome').value;
+    var novaSenha = document.getElementById('troca-novasenha').value;
+
+    if(!user || !nome || !novaSenha) return alert("⚠️ Preencha todos os campos solicitados!");
+
+    var btn = document.getElementById('btn-submit-troca'); 
+    var txtOriginal = btn.innerText;
+    btn.innerText = "⏳ A gravar..."; 
+    btn.disabled = true;
+
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      if(res.sucesso) {
+        document.getElementById('modal-trocar-senha-user').style.display = 'none';
+        document.getElementById('troca-user').value = ''; 
+        document.getElementById('troca-nome').value = ''; 
+        document.getElementById('troca-novasenha').value = '';
+      }
+      btn.innerText = txtOriginal; 
+      btn.disabled = false;
+    }).trocarSenhaAutonoma(user, nome, novaSenha);
+  }
+  // =========================================================================
+// MOTOR DE SINCRONIZAÇÃO AUTOMÁTICA, SILENCIOSA E ULTRA RÁPIDA (CACHE MEMORY)
+// =========================================================================
+var _intervaloSincronizacaoSilenciosa = 3 * 60 * 1000; // Executa no fundo a cada 3 minutos
+
+function iniciarSincronizacaoAutomaticaSilenciosa() {
+  setInterval(function() {
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      
+      // 1. Sincroniza o Radar de Manutenção em segundo plano
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res && res.sucesso) {
+             dadosRadarGlobal = res.dados || [];
+             
+             // Se o usuário estiver olhando a tabela do radar agora, atualiza os dados na tela sem piscar
+             var tbody = document.getElementById('tbody-radar-manutencao');
+             if (tbody && !tbody.innerHTML.includes('fa-spin') && typeof filtrarTabelaRadar === 'function') {
+                filtrarTabelaRadar();
+             }
+          }
+        })
+        .listarRadarManutencaoBackend();
+        
+      // Aqui você pode empilhar outras buscas silenciosas (como frota, pneus, etc.) se necessário
+    }
+  }, _intervaloSincronizacaoSilenciosa);
+}
+
+// Dispara o motor silencioso automaticamente 5 segundos após o sistema abrir
+window.addEventListener('DOMContentLoaded', function() {
+  setTimeout(iniciarSincronizacaoAutomaticaSilenciosa, 5000);
+});
+</script>

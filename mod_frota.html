@@ -1,0 +1,209 @@
+<div id="aba-lista-veiculos" class="aba-tela">
+  <h1 class="titulo-tela">🚘 Frota Cadastrada</h1>
+  <div style="max-width: 1100px;">
+    
+    <div class="header-tabela-geral">
+      <div class="barra-busca-container">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" id="input-busca-frota" class="barra-busca" placeholder="Buscar por Prefixo, Placa, Modelo ou Categoria..." onkeyup="manipularBuscaFrota()">
+      </div>
+      
+      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <div class="visualizacao-control" style="display:flex; gap:8px;">
+          <button class="btn-view-toggle ativo" onclick="mudarVisualizacaoFrota('cards')" style="display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:6px; border:1px solid #3b82f6; background:#3b82f6; color:white; cursor:pointer; font-weight:600;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            Cards
+          </button>
+          <button class="btn-view-toggle" onclick="mudarVisualizacaoFrota('tabela')" style="display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:6px; border:1px solid #cbd5e1; background:white; color:#475569; cursor:pointer; font-weight:600;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+            Tabela
+          </button>
+        </div>
+        <button class="btn-salvar" style="width: auto; padding: 13px 20px; font-size: 14px;" onclick="alternarAba('cadastros')">➕ Cadastrar Veículo</button>
+      </div>
+    </div>
+
+    <div class="grid-frota-cards" id="grid-lista-veiculos">
+      <div class="vazio-msg" style="grid-column: 1 / -1; padding: 20px;">A carregar frota...</div>
+    </div>
+
+    <div class="table-wrapper" id="tabela-lista-veiculos" style="display: none;">
+      <table class="tabela-dados" id="tabela-frota-principal">
+        <thead>
+          <tr>
+            <th onclick="ordenarTabela('prefixo')" id="th-prefixo">Prefixo <span class="sort-icon">⇅</span></th>
+            <th onclick="ordenarTabela('placa')" id="th-placa">Placa <span class="sort-icon">⇅</span></th>
+            <th onclick="ordenarTabela('marcaModelo')" id="th-marcaModelo">Marca/Modelo <span class="sort-icon">⇅</span></th>
+            <th onclick="ordenarTabela('ano')" id="th-ano">Ano <span class="sort-icon">⇅</span></th>
+            <th onclick="ordenarTabela('categoria')" id="th-categoria">Categoria <span class="sort-icon">⇅</span></th>
+          </tr>
+        </thead>
+        <tbody id="tbody-lista-veiculos"><tr><td colspan="5" class="vazio-msg">A carregar banco de dados da frota...</td></tr></tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<div id="aba-cadastros" class="aba-tela" style="display:none;">
+  <div style="display:flex; align-items:center; gap: 15px; margin-bottom: 25px;"><button onclick="alternarAba('lista-veiculos')" style="background:none; border:none; cursor:pointer; font-size:24px; color:#64748b;">⬅️</button><h1 class="titulo-tela" style="margin:0;">Cadastro de Veículos</h1></div>
+  <div class="admin-card" style="max-width: 900px;">
+    <div class="secao-destaque box-ocr">
+      <h4>🤖 Leitor Inteligente de Documento</h4><p style="font-size:12px; color:#475569; margin-bottom:10px;">Faça o upload do documento do veículo (PDF ou Foto). A IA extrairá os dados.</p><input type="file" id="file-leitor-ocr" accept="image/*,.pdf" onchange="iniciarLeituraOCR(event)" style="font-size:13px; padding:5px;"><div id="ocr-status" class="status-ocr">A preparar leitor... Aguarde.</div>
+    </div>
+    <form id="formCadastroVeiculo" onsubmit="enviarFormularioVeiculo(event)">
+      <div class="form-row-3"><div class="input-group"><label>Categoria *</label><select name="categoria" id="select-categoria" onchange="verificarCompactador()" required><option value="" disabled selected>Selecione...</option><option value="COMUM">Comum</option><option value="COMPACTADOR">Compactador</option></select></div><div class="input-group"><label>Prefixo *</label><input type="text" name="prefixo" required placeholder="Ex: 1024"></div><div class="input-group"><label>Início Operação *</label><input type="date" name="inicioOperacao" required></div></div>
+      
+      <div class="form-row" style="background:#f1f5f9; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #10b981;">
+        <div class="input-group" style="margin-bottom:0;">
+          <label>Centro de Custo *</label>
+          <select name="centroCusto" required>
+            <option value="" disabled selected>Selecione a área...</option>
+            <option value="ABASTECIMENTO">ABASTECIMENTO</option><option value="ADMINISTRAÇÃO">ADMINISTRAÇÃO</option><option value="BOMBONAS CAPINAÇÃO E ROÇAGEM">BOMBONAS CAPINAÇÃO E ROÇAGEM</option><option value="BOMBONAS CASA DE APOIO">BOMBONAS CASA DE APOIO</option><option value="BORRACHARIA">BORRACHARIA</option><option value="COLETA DOMICILIAR">COLETA DOMICILIAR</option><option value="ENTULHO MANUAL">ENTULHO MANUAL</option><option value="ENTULHO MECANIZADO">ENTULHO MECANIZADO</option><option value="LIMPEZA MECANIZADA">LIMPEZA MECANIZADA</option><option value="MANUTENÇÃO">MANUTENÇÃO</option><option value="MOTO FISCAL">MOTO FISCAL</option><option value="PINTURA MECÂNIZADA">PINTURA MECÂNIZADA</option><option value="PODA MANUAL">PODA MANUAL</option><option value="PODA TRITURADA">PODA TRITURADA</option><option value="RECICLE">RECICLE</option><option value="REMOÇÃO MOTORIZADA">REMOÇÃO MOTORIZADA</option><option value="ROÇAGEM MECANIZADA">ROÇAGEM MECANIZADA</option><option value="TECHSOL">TECHSOL</option><option value="TRANSPORTE DE EQUIPES">TRANSPORTE DE EQUIPES</option><option value="VARRIÇÃO MECANIZADA">VARRIÇÃO MECANIZADA</option><option value="LAVAGEM">LAVAGEM</option>
+          </select>
+        </div>
+        <div class="input-group" style="margin-bottom:0;">
+          <label>Informação (Equipamento) *</label>
+          <select name="informacao" required>
+            <option value="" disabled selected>Selecione o equipamento...</option>
+            <option value="COMPACTADOR 19 M³">COMPACTADOR 19 M³</option><option value="COMPACTADOR 15 M³">COMPACTADOR 15 M³</option><option value="CAÇAMBA 6 M³">CAÇAMBA 6 M³</option><option value="CAÇAMBA 12 M³">CAÇAMBA 12 M³</option><option value="CAÇAMBA 18 M³">CAÇAMBA 18 M³</option><option value="TRITURADOR">TRITURADOR</option><option value="CARROCERIA">CARROCERIA</option><option value="RETROESCAVADEIRA">RETROESCAVADEIRA</option><option value="SANEADORA">SANEADORA</option><option value="TRATOR ROÇADEIRA">TRATOR ROÇADEIRA</option><option value="MOTO">MOTO</option><option value="MOTO FISCAL">MOTO FISCAL</option><option value="VARREDEIRA PEQUENA">VARREDEIRA PEQUENA</option><option value="ÔNIBUS">ÔNIBUS</option><option value="MICRO-ÔNIBUS">MICRO-ÔNIBUS</option><option value="MÁQUINA DE PINTURA">MÁQUINA DE PINTURA</option><option value="CARRO">CARRO</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="area-compactador" class="secao-destaque" style="display: none;"><div class="form-row"><div class="input-group"><label>Equipamento</label><input type="text" name="tipoEquipamento" placeholder="Ex: Carga Traseira"></div><div class="input-group"><label>Capacidade</label><input type="text" name="capacidadeEquipamento" placeholder="Ex: 15m³"></div></div><div class="form-row"><div class="input-group"><label>Aluguel (R$)</label><input type="number" step="0.01" name="valorAluguel"></div><div class="input-group"><label>Fornecedor</label><input type="text" name="fornecedor"></div></div></div>
+      <div class="form-row-3"><div class="input-group"><label>Placa *</label><input type="text" name="placa" id="ipt-placa" required></div><div class="input-group"><label>Ano Fab *</label><input type="number" name="anoFabricacao" id="ipt-anof" required></div><div class="input-group"><label>Ano Mod *</label><input type="number" name="anoModelo" id="ipt-anom" required></div></div>
+      <div class="form-row-3"><div class="input-group"><label>Marca/Modelo *</label><input type="text" name="marcaModelo" required></div><div class="input-group"><label>Chassi</label><input type="text" name="chassi" id="ipt-chassi"></div><div class="input-group"><label>Renavam</label><input type="text" name="renavam" id="ipt-renavam"></div></div>
+      <div class="form-row-3"><div class="input-group"><label>Motor</label><input type="text" name="nrMotor" id="ipt-motor"></div><div class="input-group"><label>Qtd. Eixos</label><input type="number" name="qtdEixo"></div><div class="input-group"><label>Rodado</label><input type="text" name="tipoRodado"></div></div>
+      <h3 style="margin-top: 30px; font-size: 16px;">📸 Anexos</h3>
+      <div class="form-row file-input-group"><div class="input-group"><label>Foto Dianteira</label><input type="file" name="fileDianteira" accept="image/*"></div><div class="input-group"><label>Foto Traseira</label><input type="file" name="fileTraseira" accept="image/*"></div></div>
+      <div class="form-row file-input-group"><div class="input-group"><label>Lat. Esquerda</label><input type="file" name="fileLateralEsquerda" accept="image/*"></div><div class="input-group"><label>Lat. Direita</label><input type="file" name="fileLateralDireita" accept="image/*"></div></div>
+      <div class="form-row file-input-group" style="margin-bottom: 25px;"><div class="input-group"><label>Tacógrafo</label><input type="file" name="fileTacografo" accept="image/*,.pdf"></div><div class="input-group"><label>CRLV</label><input type="file" name="fileDocumentos" accept="image/*,.pdf"></div></div>
+      <button type="submit" class="btn-salvar" id="btn-submit-veiculo"><span class="loader-spinner"></span><span class="btn-icon">💾</span> <span class="btn-text">Salvar Veículo</span></button>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-detalhes" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>🚛 <span id="mod-prefixo"></span> <span class="tag-cat" id="mod-cat" style="margin-left: 10px;"></span></h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-detalhes')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <h3 style="font-size: 15px; color: #334155; margin-bottom: 15px; border-bottom: 2px solid #f1f5f9; padding-bottom: 5px;">Detalhes Técnicos</h3>
+      <div class="info-grid">
+        <div class="info-item"><label>Marca / Modelo</label><span id="mod-marca"></span></div>
+        <div class="info-item"><label>Ano</label><span id="mod-ano"></span></div>
+        <div class="info-item"><label>Chassi</label><span id="mod-chassi"></span></div>
+        <div class="info-item"><label>Renavam</label><span id="mod-renavam"></span></div>
+        <div class="info-item"><label>Motor</label><span id="mod-motor"></span></div>
+        <div class="info-item"><label>Eixos/Rodado</label><span id="mod-eixos"></span></div>
+        <div class="info-item"><label>Início Operação</label><span id="mod-inicio"></span></div>
+      </div>
+      
+      <div id="mod-equip-area" style="display: none;">
+        <h3 style="font-size: 15px; color: #b45309; margin-bottom: 15px; border-bottom: 2px solid #fef3c7; padding-bottom: 5px;">Equipamento</h3>
+        <div class="info-grid">
+          <div class="info-item" style="border-left-color: #f59e0b;"><label>Tipo</label><span id="mod-tipo-eq"></span></div>
+          <div class="info-item" style="border-left-color: #f59e0b;"><label>Capacidade</label><span id="mod-cap-eq"></span></div>
+          <div class="info-item" style="border-left-color: #f59e0b;"><label>Fornecedor</label><span id="mod-forn"></span></div>
+        </div>
+      </div>
+      
+      <h3 style="font-size: 15px; color: #334155; margin-bottom: 15px; margin-top: 10px; border-bottom: 2px solid #f1f5f9; padding-bottom: 5px;">Anexos</h3>
+      <div class="links-grid" id="mod-links"></div>
+
+      <div class="modal-footer" style="display:flex; gap:10px; margin-top:25px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
+         <button id="btn-veic-editar" style="flex:1; padding: 10px; background:#f59e0b; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px;">✏️ Editar Dados Completos</button>
+         <button id="btn-veic-excluir" style="flex:1; padding: 10px; background:#ef4444; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px;">🗑️ Excluir Veículo</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- NOVO MODAL (revisão 8): edição rápida de Status, aberta ao clicar direto na badge
+     ATIVO/DEVOLVIDO/EMPRESTADO da tabela ou do card, sem precisar abrir o card completo e
+     depois clicar em "Editar". Usa atualizarStatusVeiculoBackend, que só grava a coluna de
+     Status e nunca toca na Categoria ou em qualquer outro campo do veículo. -->
+<div id="modal-status-rapido" class="modal-overlay" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 10050;">
+  <div class="modal-box" style="background: white; padding: 22px; border-radius: 12px; width: 90%; max-width: 340px;">
+    <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">
+      <h2 style="font-size: 15px; margin: 0; color: #1e293b;">🔄 Alterar Status - <span id="status-rapido-prefixo"></span></h2>
+      <span style="font-size: 22px; cursor: pointer; color: #64748b;" onclick="fecharModal('modal-status-rapido')">×</span>
+    </div>
+    <input type="hidden" id="status-rapido-prefixo-real">
+    <div>
+      <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Novo Status</label>
+      <select id="status-rapido-select" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+        <option value="ATIVO">ATIVO</option>
+        <option value="DEVOLVIDO">DEVOLVIDO</option>
+        <option value="EMPRESTADO">EMPRESTADO</option>
+      </select>
+    </div>
+    <button type="button" id="btn-status-rapido-salvar" onclick="confirmarStatusRapido()" style="width:100%; margin-top: 15px; padding: 10px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer;">💾 Salvar Status</button>
+  </div>
+</div>
+
+<div id="modal-editar-veiculo" class="modal-overlay" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 9999;">
+  <div class="modal-box" style="background: white; padding: 25px; border-radius: 12px; width: 95%; max-width: 650px; max-height: 90vh; overflow-y: auto;">
+    <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">
+      <h2 style="font-size: 18px; margin: 0; color: #1e293b;">✏️ Editar Dados do Veículo</h2>
+      <span style="font-size: 24px; cursor: pointer; color: #64748b;" onclick="fecharModal('modal-editar-veiculo')">×</span>
+    </div>
+    
+    <form id="formEditarVeiculo" onsubmit="enviarEdicaoVeiculo(event)">
+      <input type="hidden" id="edit-veic-prefixo-antigo">
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+         <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Prefixo *</label>
+            <input type="text" id="edit-veic-prefixo" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-transform: uppercase; font-weight: bold; color: #1e3a8a;" required>
+         </div>
+         <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Placa Mercosul *</label>
+            <input type="text" id="edit-veic-placa" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-transform: uppercase;" required>
+         </div>
+         <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Marca / Modelo</label>
+            <input type="text" id="edit-veic-marca" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-transform: uppercase;">
+         </div>
+         <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Ano (Ex: 2020/2020)</label>
+            <input type="text" id="edit-veic-ano" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+         </div>
+         <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Chassi</label>
+            <input type="text" id="edit-veic-chassi" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-transform: uppercase;">
+         </div>
+         <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Renavam</label>
+            <input type="text" id="edit-veic-renavam" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+         </div>
+         <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Motor</label>
+            <input type="text" id="edit-veic-motor" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-transform: uppercase;">
+         </div>
+         <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Categoria</label>
+            <select id="edit-veic-categoria" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+               <option value="COMUM">COMUM</option>
+               <option value="COMPACTADOR">COMPACTADOR</option>
+               <option value="MÁQUINA">MÁQUINA</option>
+            </select>
+         </div>
+         <div>
+            <!-- NOVO CAMPO (revisão 7): status do veículo, pedido pelo usuário -->
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Status</label>
+            <select id="edit-veic-status" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+               <option value="ATIVO">ATIVO</option>
+               <option value="DEVOLVIDO">DEVOLVIDO</option>
+               <option value="EMPRESTADO">EMPRESTADO</option>
+            </select>
+         </div>
+      </div>
+      
+      <button type="submit" style="width:100%; padding: 12px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-weight: bold; font-size: 15px; cursor: pointer;">💾 Guardar Alterações</button>
+    </form>
+  </div>
+</div>

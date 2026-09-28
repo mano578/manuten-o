@@ -1,0 +1,1020 @@
+<script>
+  // ================= MÓDULO OPERACIONAL: SOS (DEFINITIVO) =================
+  // NOTA (revisão): preencherPlacaSOS estava definida duas vezes neste arquivo. Esta
+  // primeira versão (sem parâmetro, lendo 'sos-prefixo' diretamente) era código morto,
+  // pois o HTML chama preencherPlacaSOS(this.value) com um argumento — a versão que
+  // realmente executa é a definida mais abaixo, com parâmetro prefixoSelecionado.
+
+  function atualizarDatalistSOS() {
+    var dl = document.getElementById('lista-veiculos-sos');
+    if(!dl || typeof frotaGlobal === 'undefined' || !Array.isArray(frotaGlobal)) return;
+    dl.innerHTML = '';
+    frotaGlobal.forEach(v => { dl.innerHTML += `<option value="${v.prefixo}">${v.placa}</option>`; });
+  }
+
+  // NOVA FUNÇÃO (revisão 8): preenche o campo "Data e Hora de Abertura" do formulário de SOS
+  // com o momento atual (mesmo padrão usado em abrirModalNovaOS para a O.S.), mas o campo
+  // continua editável para quem quiser registrar um horário diferente do momento do clique.
+  function definirDataAberturaSosDefault() {
+    var campo = document.getElementById('sos-data-abertura');
+    if (!campo) return;
+    var now = new Date();
+    var tzOffset = now.getTimezoneOffset() * 60000;
+    campo.value = (new Date(now - tzOffset)).toISOString().slice(0,16);
+  }
+
+  function enviarNovoSOS(event) {
+    event.preventDefault();
+    var btn = document.getElementById('btn-salvar-sos'); var span = btn.querySelector('.btn-text');
+    span.innerText = "⏳ A gravar na aba SOS_FROTA..."; btn.disabled = true;
+
+    var dados = {
+      prefixo: document.getElementById('sos-prefixo').value.toUpperCase(),
+      placa: document.getElementById('sos-placa').value.toUpperCase(),
+      solicitante: document.getElementById('sos-solicitante').value.toUpperCase(),
+      tipo: document.getElementById('sos-tipo').value.toUpperCase(),
+      reboque: document.getElementById('sos-reboque').value.toUpperCase(),
+      descricao: document.getElementById('sos-descricao').value,
+      // NOVO CAMPO (revisão 8): data/hora de abertura escolhida pelo usuário no formulário.
+      dataAbertura: document.getElementById('sos-data-abertura') ? document.getElementById('sos-data-abertura').value : ""
+    };
+
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      if(res.sucesso) { document.getElementById('form-sos').reset(); definirDataAberturaSosDefault(); if(typeof carregarListaSOS === 'function') carregarListaSOS(); }
+      span.innerText = "🚨 Registrar SOS no Sistema"; btn.disabled = false;
+    }).salvarNovoSOS(dados);
+  }
+
+  function carregarListaSOS() {
+    if(typeof atualizarDatalistSOS === 'function') atualizarDatalistSOS(); 
+    var tbody = document.getElementById('tbody-sos');
+    if(tbody) tbody.innerHTML = '<tr><td colspan="10" class="vazio-msg">Sincronizando banco SOS_FROTA...</td></tr>';
+    
+    google.script.run.withSuccessHandler(function(lista) {
+      if(!lista || !Array.isArray(lista)) lista = []; 
+
+      // NOVO (revisão 9): guarda a última lista carregada em memória, para que o modal de
+      // edição de SOS consiga preencher os campos sem precisar de outra chamada ao servidor.
+      window._cacheSOS = lista;
+
+      if(tbody) {
+          if(lista.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="11" class="vazio-msg">Nenhum SOS registado.</td></tr>'; 
+          } else {
+            var html = '';
+            lista.forEach(s => {
+              var isAberto = s.status === 'EM ABERTO';
+              var styleStatus = isAberto ? 'background:#fee2e2; color:#b91c1c; font-weight:800; padding:2px 6px; border-radius:4px;' : 'color:#059669; font-weight:700;';
+              
+              var btnAcao = isAberto 
+                ? `<button onclick="concluirChamadoSOS(event, ${s.linhaOrigem}, '${s.prefixo}')" style="background:#10b981; color:white; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:bold; width:100%;">✅ Concluir</button>` 
+                : `<span style="font-size:11px; color:#64748b; font-weight:bold;">🕒 ${s.tempoTotal || '-'}</span>`;
+
+              // NOVO (revisão 9): botão "✏️ Editar" disponível em qualquer SOS (aberto ou já
+              // concluído), para corrigir prefixo errado ou erro de digitação sem apagar o
+              // registo.
+              var btnEditar = `<button onclick="abrirModalEditarSOS(${s.linhaOrigem})" style="background:#1d4ed8; color:white; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:bold; width:100%;">✏️ Editar</button>`;
+
+              html += `<tr>
+                <td style="white-space:nowrap;">${s.dataSolicitacao}</td>
+                <td><strong>${s.prefixo}</strong></td>
+                <td>${s.placa}</td>
+                <td>${s.tipo}</td>
+                <td style="max-width:250px; white-space:normal; line-height:1.4;">${s.descricao}</td>
+                <td><span style="${styleStatus}">${s.status}</span></td>
+                <td>${s.solicitante}</td>
+                <td style="white-space:nowrap;">${s.dataConclusao || '-'}</td>
+                <td>${s.reboque}</td>
+                <td style="text-align:center; vertical-align:middle;">${btnAcao}</td>
+                <td style="text-align:center; vertical-align:middle;">${btnEditar}</td>
+              </tr>`;
+            });
+            tbody.innerHTML = html;
+          }
+      }
+      if(typeof renderizarAlertasSOSPainel === 'function') { renderizarAlertasSOSPainel(lista); }
+    }).listarSOS();
+  }
+
+  // NOVA FUNÇÃO (revisão 9): abre o modal de edição de um SOS já lançado, buscando os dados
+  // na última lista carregada em memória (window._cacheSOS) em vez de chamar o servidor de
+  // novo — evita atraso e mantém o modal sempre consistente com o que está na tela.
+  function abrirModalEditarSOS(linhaOrigem) {
+    var lista = window._cacheSOS || [];
+    var s = lista.find(function(item) { return item.linhaOrigem === linhaOrigem; });
+    if (!s) { alert("Não foi possível localizar os dados deste SOS. Atualize a lista e tente novamente."); return; }
+
+    document.getElementById('sos-editar-linha').value = s.linhaOrigem;
+    document.getElementById('sos-editar-prefixo').value = s.prefixo;
+    document.getElementById('sos-editar-placa').value = s.placa;
+    document.getElementById('sos-editar-solicitante').value = s.solicitante;
+    document.getElementById('sos-editar-tipo').value = s.tipo;
+    document.getElementById('sos-editar-reboque').value = s.reboque;
+    document.getElementById('sos-editar-descricao').value = s.descricao;
+
+    // Converte a data exibida ("dd/MM/yyyy HH:mm") de volta para o formato
+    // "yyyy-MM-ddTHH:mm" que o campo datetime-local exige; se não for possível reconhecer o
+    // formato (registo muito antigo, texto livre), deixa o campo em branco em vez de travar.
+    var partes = String(s.dataSolicitacao).match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
+    document.getElementById('sos-editar-data-abertura').value = partes
+      ? (partes[3] + '-' + partes[2] + '-' + partes[1] + 'T' + partes[4] + ':' + partes[5])
+      : '';
+
+    document.getElementById('modal-editar-sos').style.display = 'flex';
+  }
+
+  // NOVA FUNÇÃO (revisão 9): igual a preencherPlacaSOS, mas para o campo de placa do modal de
+  // edição ("sos-editar-placa"), sem alterar a função original usada no formulário de abertura.
+  function preencherPlacaSOSEditar(prefixoSelecionado) {
+    var inputPlaca = document.getElementById('sos-editar-placa');
+    if (!inputPlaca) return;
+    if (typeof frotaGlobal !== 'undefined') {
+      var veiculo = frotaGlobal.find(v => v.prefixo === prefixoSelecionado);
+      inputPlaca.value = veiculo ? veiculo.placa : "Não Encontrada";
+    }
+  }
+
+  // NOVA FUNÇÃO (revisão 9): envia as correções do modal de edição de SOS ao backend
+  // (atualizarSOSBackend), que só sobrescreve os campos enviados preenchidos.
+  function confirmarEdicaoSOS(event) {
+    event.preventDefault();
+    var linha = document.getElementById('sos-editar-linha').value;
+    var dados = {
+      prefixo: document.getElementById('sos-editar-prefixo').value.toUpperCase(),
+      placa: document.getElementById('sos-editar-placa').value.toUpperCase(),
+      solicitante: document.getElementById('sos-editar-solicitante').value.toUpperCase(),
+      tipo: document.getElementById('sos-editar-tipo').value.toUpperCase(),
+      reboque: document.getElementById('sos-editar-reboque').value.toUpperCase(),
+      descricao: document.getElementById('sos-editar-descricao').value,
+      dataAbertura: document.getElementById('sos-editar-data-abertura').value
+    };
+    var btn = event.target.querySelector('button[type="submit"]');
+    var textoOriginal = btn.innerText; btn.innerText = "⏳ A salvar..."; btn.disabled = true;
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      btn.innerText = textoOriginal; btn.disabled = false;
+      if (res.sucesso) { fecharModal('modal-editar-sos'); carregarListaSOS(); }
+    }).withFailureHandler(function(erro) {
+      alert("❌ Falha de comunicação com o servidor.");
+      btn.innerText = textoOriginal; btn.disabled = false;
+    }).atualizarSOSBackend(linha, dados);
+  }
+
+  // ALTERADO (revisão 8): em vez de fechar o SOS direto com confirm() e gravar sempre o
+  // momento exato do clique, agora abre o modal #modal-fechar-sos para o usuário escolher
+  // (ou confirmar) a data e hora reais da conclusão antes de gravar.
+  function concluirChamadoSOS(event, linhaOrigem, prefixo) {
+    abrirModalFecharSOS(linhaOrigem, prefixo);
+  }
+
+  // NOVA FUNÇÃO (revisão 8): abre o modal de conclusão do SOS, preenchendo os campos ocultos
+  // com a linha/prefixo do chamado e a data/hora de conclusão com o momento atual (editável).
+  function abrirModalFecharSOS(linhaOrigem, prefixo) {
+    document.getElementById('sos-fechar-linha').value = linhaOrigem;
+    document.getElementById('sos-fechar-prefixo').value = prefixo;
+    var now = new Date();
+    var tzOffset = now.getTimezoneOffset() * 60000;
+    document.getElementById('sos-data-fechamento').value = (new Date(now - tzOffset)).toISOString().slice(0,16);
+    document.getElementById('modal-fechar-sos').style.display = 'flex';
+  }
+
+  // NOVA FUNÇÃO (revisão 8): confirma a conclusão do SOS com a data/hora escolhida pelo
+  // usuário no modal, enviando-a ao backend em vez do momento exato do clique.
+  function confirmarFechamentoSOS(event) {
+    event.preventDefault();
+    var linhaOrigem = document.getElementById('sos-fechar-linha').value;
+    var prefixo = document.getElementById('sos-fechar-prefixo').value;
+    var dataFechamento = document.getElementById('sos-data-fechamento').value;
+    var btn = event.target.querySelector('button[type="submit"]');
+    var textoOriginal = btn.innerText; btn.innerText = "⏳ A fechar..."; btn.disabled = true;
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      btn.innerText = textoOriginal; btn.disabled = false;
+      if(res.sucesso) { fecharModal('modal-fechar-sos'); carregarListaSOS(); }
+    }).withFailureHandler(function(erro) {
+      alert("❌ Falha de comunicação com o servidor.");
+      btn.innerText = textoOriginal; btn.disabled = false;
+    }).fecharChamadoSOSBackend(linhaOrigem, prefixo, dataFechamento);
+  }
+
+  function carregarAlertasSOS() { 
+    if(typeof carregarListaSOS === 'function') carregarListaSOS(); 
+  }
+
+  function renderizarAlertasSOSPainel(lista) {
+    var containerGeral = document.getElementById('container-alertas-sos'); var grid = document.getElementById('grid-sos-cards'); 
+    if(!containerGeral || !grid) return;
+
+    var abertos = lista.filter(s => s.status === 'EM ABERTO');
+    if (abertos.length === 0) { containerGeral.style.display = 'none'; grid.innerHTML = ''; return; }
+    
+    containerGeral.style.display = 'block'; var html = '';
+    abertos.forEach(s => {
+      var dataCurta = String(s.dataSolicitacao).length > 10 ? String(s.dataSolicitacao).substring(0, 10) : s.dataSolicitacao;
+      html += `<div class="card-alerta-sos" style="background:#fff; border:1px solid #fecaca; border-left:4px solid #ef4444; padding:15px; border-radius:8px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+        <h4 style="margin:0 0 10px 0; color:#1e293b; display:flex; justify-content:space-between; align-items:center;">
+          ${s.prefixo} | ${s.placa} 
+          <span class="tag-relogio" style="background:#e2e8f0; color:#475569; padding:2px 6px; border-radius:4px; font-size:11px;">📅 ${dataCurta}</span>
+        </h4>
+        <p style="margin:2px 0; font-size:12px; color:#475569;"><strong>Tipo:</strong> ${s.tipo}</p>
+        <p style="margin:2px 0; font-size:12px; color:#475569;"><strong>Problema:</strong> ${s.descricao}</p>
+        <p style="margin:2px 0 10px 0; font-size:12px; color:#475569;"><strong>Solicitante:</strong> ${s.solicitante}</p>
+        <button class="btn-fechar-sos" style="width:100%; margin-top:10px; background:#10b981; color:white; border:none; padding:8px; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="concluirChamadoSOS(event, ${s.linhaOrigem}, '${s.prefixo}')">✅ Concluir Chamado</button>
+      </div>`;
+    });
+    grid.innerHTML = html;
+  }
+
+  window.addEventListener('load', function() {
+    var botaoSOS = document.querySelector('[data-aba="sos"]');
+    if (botaoSOS) { botaoSOS.addEventListener('click', function() { if (typeof carregarListaSOS === 'function') { setTimeout(carregarListaSOS, 100); } }); }
+    var botaoPainel = document.querySelector('[data-aba="painel-geral"]');
+    if (botaoPainel) { botaoPainel.addEventListener('click', function() { if (typeof carregarListaSOS === 'function') { setTimeout(carregarListaSOS, 100); } }); }
+    // NOVO (revisão 8): garante que o campo "Data e Hora de Abertura" do formulário de SOS
+    // já vem preenchido com o momento atual desde o primeiro carregamento da tela.
+    definirDataAberturaSosDefault();
+  });
+
+  // ================= MÓDULO OPERACIONAL: ORDEM DE SERVIÇO (O.S.) =================
+  // 🆕 prefixoPreSelecionado é opcional: quando informado (ex.: chamado a partir do botão "Abrir O.S."
+  // do Checklist Diário), pré-seleciona o veículo no formulário e já dispara o preenchimento
+  // automático da placa/dados, sem alterar o comportamento existente para quem chama sem argumento.
+  function abrirModalNovaOS(prefixoPreSelecionado) {
+    document.getElementById('formNovaOS').reset();
+    document.getElementById('os-total-geral').innerText = "R$ 0.00";
+    document.getElementById('div-fornecedor-os').style.display = 'none';
+    
+    document.getElementById('os-linha-edit').value = "";
+    document.getElementById('titulo-modal-os').innerText = "🛠️ Abertura de Ordem de Serviço";
+    
+    var now = new Date();
+    var tzOffset = now.getTimezoneOffset() * 60000;
+    document.getElementById('os-data-inicial').value = (new Date(now - tzOffset)).toISOString().slice(0,16);
+
+    document.getElementById('container-produtos-os').innerHTML = '';
+    document.getElementById('container-servicos-os').innerHTML = '';
+    adicionarProdutoOS();
+    adicionarServicoOS();
+    
+   var datalistFrota = document.getElementById('lista-veiculos-os');
+    if (typeof frotaGlobal !== 'undefined' && datalistFrota) {
+      var htmlFrota = '';
+      frotaGlobal.slice().sort((a,b) => a.prefixo.localeCompare(b.prefixo)).forEach(v => { 
+        htmlFrota += `<option value="${v.prefixo}">${v.placa}</option>`; 
+      });
+      datalistFrota.innerHTML = htmlFrota;
+    }
+
+    var selectMec = document.getElementById('os-mecanico');
+    if (typeof funcionariosGlobal !== 'undefined' && selectMec) {
+      var htmlMec = '<option value="" disabled selected>Selecione o Mecânico...</option>';
+      funcionariosGlobal.filter(f => f.status === 'ATIVO').sort((a,b) => a.nome.localeCompare(b.nome)).forEach(f => { htmlMec += `<option value="${f.nome}">${f.nome} (${f.funcao})</option>`; });
+      selectMec.innerHTML = htmlMec;
+    }
+
+    document.getElementById('modal-nova-os').style.display = 'flex';
+
+    if (prefixoPreSelecionado) {
+      document.getElementById('os-prefixo').value = prefixoPreSelecionado;
+      preencherDadosVeiculoOS(prefixoPreSelecionado);
+    }
+  }
+
+  function abrirModalEditarOS(linha) {
+    document.getElementById('formNovaOS').reset();
+    document.getElementById('titulo-modal-os').innerText = "⏳ A buscar dados da O.S...";
+    
+    document.getElementById('os-linha-edit').value = linha;
+    document.getElementById('modal-nova-os').style.display = 'flex';
+    document.getElementById('container-produtos-os').innerHTML = '';
+    document.getElementById('container-servicos-os').innerHTML = '';
+
+    var datalistFrota = document.getElementById('lista-veiculos-os');
+    if (typeof frotaGlobal !== 'undefined' && datalistFrota) {
+      var htmlFrota = '';
+      frotaGlobal.slice().sort((a,b) => a.prefixo.localeCompare(b.prefixo)).forEach(v => { 
+        htmlFrota += `<option value="${v.prefixo}">${v.placa}</option>`; 
+      });
+      datalistFrota.innerHTML = htmlFrota;
+    }
+    
+    var selectMec = document.getElementById('os-mecanico');
+    if (typeof funcionariosGlobal !== 'undefined') {
+      var htmlMec = '<option value="" disabled>Selecione o Mecânico...</option>';
+      funcionariosGlobal.filter(f => f.status === 'ATIVO').sort((a,b) => a.nome.localeCompare(b.nome)).forEach(f => { htmlMec += `<option value="${f.nome}">${f.nome} (${f.funcao})</option>`; });
+      selectMec.innerHTML = htmlMec;
+    }
+
+    google.script.run.withSuccessHandler(function(res) {
+      if(!res.sucesso) return alert("Erro ao ler O.S.");
+      var os = res.dados;
+      
+      document.getElementById('titulo-modal-os').innerText = "✏️ Edição de O.S. - " + os.id;
+      
+      document.getElementById('os-prefixo').value = os.prefixo;
+      document.getElementById('os-mecanico').value = os.mecanico;
+      document.getElementById('os-data-inicial').value = os.dataInicial;
+      document.getElementById('os-prioridade').value = os.prioridade;
+      document.getElementById('os-solicitante').value = os.solicitante;
+      document.getElementById('os-situacao-parada').value = os.situacaoParada;
+      document.getElementById('os-placa').value = os.placa;
+      document.getElementById('os-km').value = os.km;
+      document.getElementById('os-tipo-manutencao').value = os.tipoManutencao;
+      document.getElementById('os-setor').value = os.setor;
+      document.getElementById('os-tipo').value = os.tipoOS;
+      
+      verificarTipoOS(os.tipoOS);
+      if(os.tipoOS === "EXTERNO") document.getElementById('os-fornecedor').value = os.fornecedor;
+      
+      document.getElementById('os-defeito').value = os.defeito;
+      document.getElementById('os-diagnostico').value = os.diagnostico;
+
+      if(os.produtos.length === 0) adicionarProdutoOS();
+      else {
+        os.produtos.forEach(p => {
+          adicionarProdutoOS();
+          let linhas = document.querySelectorAll('.linha-produto-os');
+          let ult = linhas[linhas.length - 1];
+          ult.querySelector('.os-prod-desc').value = p.nome;
+          ult.querySelector('.os-prod-qtd').value = p.qtd;
+          ult.querySelector('.os-prod-val').value = p.valor;
+        });
+      }
+
+      if(os.servicos.length === 0) adicionarServicoOS();
+      else {
+        os.servicos.forEach(s => {
+          adicionarServicoOS();
+          let linhas = document.querySelectorAll('.linha-servico-os');
+          let ult = linhas[linhas.length - 1];
+          ult.querySelector('.os-serv-desc').value = s.nome;
+          ult.querySelector('.os-serv-qtd').value = s.qtd;
+          ult.querySelector('.os-serv-val').value = s.valor;
+        });
+      }
+
+      calcularTotaisOS();
+    }).obterDetalhesOSBackend(linha);
+  }
+
+  function adicionarProdutoOS() {
+    var div = document.createElement('div');
+    div.className = "linha-produto-os";
+    div.style = "display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px;";
+    div.innerHTML = `
+      <input type="text" class="os-prod-desc" placeholder="Nome da Peça (Ex: Óleo)" style="flex:1; min-width:150px; padding:8px; border:1px solid #cbd5e1; border-radius:4px; font-size:12px;">
+      <input type="number" class="os-prod-qtd" placeholder="Qtd" step="0.1" oninput="calcularTotaisOS()" style="width:60px; padding:8px; border:1px solid #cbd5e1; border-radius:4px; font-size:12px;">
+      <input type="number" class="os-prod-val" placeholder="R$ Unit." step="0.01" oninput="calcularTotaisOS()" style="width:80px; padding:8px; border:1px solid #cbd5e1; border-radius:4px; font-size:12px;">
+      <input type="text" class="os-prod-tot" placeholder="R$ Total" readonly style="width:80px; padding:8px; border:1px solid #cbd5e1; border-radius:4px; font-size:12px; background:#e2e8f0; font-weight:bold;">
+      <button type="button" onclick="this.parentElement.remove(); calcularTotaisOS();" style="background:none; border:none; color:#ef4444; cursor:pointer; font-weight:bold; padding:0 5px;">✖</button>
+    `;
+    document.getElementById('container-produtos-os').appendChild(div);
+  }
+
+  function adicionarServicoOS() {
+    var div = document.createElement('div');
+    div.className = "linha-servico-os";
+    div.style = "display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px;";
+    div.innerHTML = `
+      <input type="text" class="os-serv-desc" placeholder="Serviço (Ex: Solda)" style="flex:1; min-width:150px; padding:8px; border:1px solid #cbd5e1; border-radius:4px; font-size:12px;">
+      <input type="number" class="os-serv-qtd" placeholder="Qtd/Hr" step="0.1" oninput="calcularTotaisOS()" style="width:60px; padding:8px; border:1px solid #cbd5e1; border-radius:4px; font-size:12px;">
+      <input type="number" class="os-serv-val" placeholder="R$ Unit." step="0.01" oninput="calcularTotaisOS()" style="width:80px; padding:8px; border:1px solid #cbd5e1; border-radius:4px; font-size:12px;">
+      <input type="text" class="os-serv-tot" placeholder="R$ Total" readonly style="width:80px; padding:8px; border:1px solid #cbd5e1; border-radius:4px; font-size:12px; background:#e2e8f0; font-weight:bold;">
+      <button type="button" onclick="this.parentElement.remove(); calcularTotaisOS();" style="background:none; border:none; color:#ef4444; cursor:pointer; font-weight:bold; padding:0 5px;">✖</button>
+    `;
+    document.getElementById('container-servicos-os').appendChild(div);
+  }
+
+  function calcularTotaisOS() {
+    let totalGeral = 0;
+    
+    document.querySelectorAll('.linha-produto-os').forEach(linha => {
+      let qtd = parseFloat(linha.querySelector('.os-prod-qtd').value) || 0;
+      let val = parseFloat(linha.querySelector('.os-prod-val').value) || 0;
+      let tot = qtd * val;
+      linha.querySelector('.os-prod-tot').value = tot > 0 ? tot.toFixed(2) : "";
+      totalGeral += tot;
+    });
+
+    document.querySelectorAll('.linha-servico-os').forEach(linha => {
+      let qtd = parseFloat(linha.querySelector('.os-serv-qtd').value) || 0;
+      let val = parseFloat(linha.querySelector('.os-serv-val').value) || 0;
+      let tot = qtd * val;
+      linha.querySelector('.os-serv-tot').value = tot > 0 ? tot.toFixed(2) : "";
+      totalGeral += tot;
+    });
+
+    document.getElementById('os-total-geral').innerText = "R$ " + totalGeral.toFixed(2);
+  }
+
+  function verificarTipoOS(valor) {
+    var divForn = document.getElementById('div-fornecedor-os');
+    var inputForn = document.getElementById('os-fornecedor');
+    if (valor === 'EXTERNO') { divForn.style.display = 'block'; inputForn.required = true; } 
+    else { divForn.style.display = 'none'; inputForn.required = false; inputForn.value = ''; }
+  }
+
+  function preencherDadosVeiculoOS(prefixoEscolhido) {
+    var veiculo = frotaGlobal.find(v => v.prefixo === prefixoEscolhido);
+    if(veiculo) {
+      document.getElementById('os-placa').value = veiculo.placa;
+      document.getElementById('os-km').placeholder = "Buscando último KM...";
+      
+      google.script.run.withSuccessHandler(function(kmEncontrado) {
+        if(kmEncontrado !== "") document.getElementById('os-km').value = kmEncontrado;
+        else document.getElementById('os-km').placeholder = "Digite o KM/Horímetro atual...";
+      }).buscarKmAbastecimento(prefixoEscolhido);
+    }
+  }
+
+  async function enviarFormularioOS(event) {
+    event.preventDefault();
+    var btn = document.getElementById('btn-submit-os');
+    var txtOriginal = btn ? btn.innerText : "Gerar Ordem de Serviço (O.S.)";
+    
+    if (btn) {
+      btn.innerText = "⏳ A gravar no banco de dados...";
+      btn.disabled = true;
+    }
+
+    // 🆕 CORREÇÃO DO BUG "NÃO SALVA" (fica travado precisando recarregar a página):
+    // Se o Apps Script não responder (sucesso ou falha) dentro do tempo abaixo, o botão é
+    // destravado automaticamente e o usuário pode tentar salvar de novo, sem precisar recarregar.
+    var respondeuOS = false;
+    var vigiaTravamentoOS = setTimeout(function() {
+      if (respondeuOS) return;
+      respondeuOS = true;
+      if (btn) { btn.innerText = txtOriginal; btn.disabled = false; }
+      alert("⚠️ O servidor demorou para responder e a operação foi cancelada.\nPor favor, clique em salvar novamente (não é necessário recarregar a página).");
+    }, 25000);
+
+    try {
+      var listaProdutos = [];
+      document.querySelectorAll('.linha-produto-os').forEach(linha => {
+        let desc = linha.querySelector('.os-prod-desc').value;
+        let qtd = parseFloat(linha.querySelector('.os-prod-qtd').value) || 0;
+        let val = parseFloat(linha.querySelector('.os-prod-val').value) || 0;
+        if (desc && qtd > 0) listaProdutos.push({nome: desc, qtd: qtd, valor: val});
+      });
+
+      var listaServicos = [];
+      document.querySelectorAll('.linha-servico-os').forEach(linha => {
+        let desc = linha.querySelector('.os-serv-desc').value;
+        let qtd = parseFloat(linha.querySelector('.os-serv-qtd').value) || 0;
+        let val = parseFloat(linha.querySelector('.os-serv-val').value) || 0;
+        if (desc && qtd > 0) listaServicos.push({nome: desc, qtd: qtd, valor: val});
+      });
+
+      var nomeMecanico = document.getElementById('os-mecanico').value;
+      var assinaturaLink = "";
+      if (typeof funcionariosGlobal !== 'undefined') {
+        var mecData = funcionariosGlobal.find(f => f.nome === nomeMecanico);
+        if (mecData && mecData.assinatura) assinaturaLink = mecData.assinatura;
+      }
+
+      var inputData = document.getElementById('os-data-inicial').value; 
+      var dataFormatada = inputData ? inputData.replace("T", " ") : "";
+      
+      var prefixoEscolhido = document.getElementById('os-prefixo').value;
+
+      // =========================================================================
+      // NOVIDADE: BUSCA O CENTRO DE CUSTO REAL DO VEÍCULO NA MEMÓRIA DA FROTA
+      // =========================================================================
+      var veiculoMat = (typeof frotaGlobal !== 'undefined') ? frotaGlobal.find(v => v.prefixo === prefixoEscolhido) : null;
+      var centroCustoReal = (veiculoMat && veiculoMat.centroCusto) ? veiculoMat.centroCusto : "A DEFINIR";
+
+      var dados = {
+        dataInicial: dataFormatada,
+        prioridade: document.getElementById('os-prioridade').value,
+        solicitante: document.getElementById('os-solicitante').value,
+        situacaoParada: document.getElementById('os-situacao-parada').value,
+        prefixo: prefixoEscolhido,
+        placa: document.getElementById('os-placa').value,
+        centroCusto: centroCustoReal, // <-- AGORA USA O VALOR REAL CADASTRADO NO VEÍCULO
+        km: document.getElementById('os-km').value,
+        tipoManutencao: document.getElementById('os-tipo-manutencao').value,
+        setor: document.getElementById('os-setor').value,
+        tipoOS: document.getElementById('os-tipo').value,
+        fornecedor: document.getElementById('os-fornecedor').value || "",
+        defeito: document.getElementById('os-defeito').value,
+        produtos: listaProdutos,
+        servicos: listaServicos,
+        diagnostico: document.getElementById('os-diagnostico').value || "",
+        mecanico: nomeMecanico,
+        linkAssinatura: assinaturaLink,
+        linksAnexos: "" 
+      };
+
+      var linhaEdit = document.getElementById('os-linha-edit').value;
+
+      if (linhaEdit && linhaEdit !== "") {
+         google.script.run
+           .withSuccessHandler(function(res) {
+             if (respondeuOS) return; respondeuOS = true; clearTimeout(vigiaTravamentoOS);
+             alert(res.mensagem);
+             if(res.sucesso) { 
+               document.getElementById('formNovaOS').reset(); 
+               fecharModal('modal-nova-os'); 
+               carregarListaOS(); 
+             }
+             if(btn) { btn.innerText = txtOriginal; btn.disabled = false; }
+           })
+           .withFailureHandler(function(erro) {
+             if (respondeuOS) return; respondeuOS = true; clearTimeout(vigiaTravamentoOS);
+             alert("❌ Falha de comunicação com o servidor. Verifique a internet e tente salvar novamente.");
+             if(btn) { btn.innerText = txtOriginal; btn.disabled = false; }
+           })
+           .atualizarOrdemServicoBackend(linhaEdit, dados);
+      } else {
+         google.script.run
+           .withSuccessHandler(function(res) {
+             if (respondeuOS) return; respondeuOS = true; clearTimeout(vigiaTravamentoOS);
+             alert(res.mensagem);
+             if(res.sucesso) { 
+               document.getElementById('formNovaOS').reset(); 
+               fecharModal('modal-nova-os'); 
+               carregarListaOS(); 
+             }
+             if(btn) { btn.innerText = txtOriginal; btn.disabled = false; }
+           })
+           .withFailureHandler(function(erro) {
+             if (respondeuOS) return; respondeuOS = true; clearTimeout(vigiaTravamentoOS);
+             alert("❌ Falha de comunicação com o servidor. Verifique a internet e tente salvar novamente.");
+             if(btn) { btn.innerText = txtOriginal; btn.disabled = false; }
+           })
+           .salvarNovaOrdemServico(dados);
+      }
+    } catch (erroLocal) {
+      respondeuOS = true; clearTimeout(vigiaTravamentoOS);
+      alert("❌ Ocorreu um erro ao ler o formulário: " + erroLocal.message);
+      if (btn) { btn.innerText = txtOriginal; btn.disabled = false; }
+    }
+  }
+
+ // ================= MÓDULO OPERACIONAL: REVISÃO E ESTATÍSTICA DE O.S. =================
+  let ordensServicoGlobal = []; 
+  let osFiltradasImpressao = []; // Guarda os dados na memória para gerar o PDF
+
+  function carregarListaOS() {
+    var tbody = document.getElementById('tbody-ordens-servico');
+    if(!tbody) return;
+    
+    if (!ordensServicoGlobal || ordensServicoGlobal.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="10" class="vazio-msg">A sincronizar O.S. com o servidor...</td></tr>';
+    }
+    
+    google.script.run.withSuccessHandler(function(lista) {
+      ordensServicoGlobal = lista || [];
+      filtrarOS(); // O filtro processa tudo e desenha a tabela instantaneamente
+    }).listarOrdensServicoFrontend();
+  }
+
+  function limparFiltroPeriodoOS() {
+    document.getElementById('input-busca-os').value = '';
+    document.getElementById('os-filtro-inicio').value = '';
+    document.getElementById('os-filtro-fim').value = '';
+    document.getElementById('filtro-status-os').value = 'TODOS';
+    filtrarOS();
+  }
+
+  // ================= FUNÇÃO BLINDADA PARA LER QUALQUER DATA =================
+  function converterDataParaTimestamp(dataStr) {
+    if (!dataStr) return null;
+    // Limpa a data e remove horas ou a letra "T" do banco de dados
+    var texto = String(dataStr).trim().replace("T", " ");
+    var parteData = texto.split(" ")[0]; // Extrai apenas "20/06/2026", "20/06" ou "2026-06-20"
+
+    var dia = NaN, mes = NaN, ano = new Date().getFullYear();
+
+    if (parteData.includes("/")) {
+      let p = parteData.split("/"); // Formato DD/MM/YYYY
+      dia = parseInt(p[0]);
+      mes = parseInt(p[1]) - 1;
+      if (p.length === 3) ano = parseInt(p[2]);
+    } else if (parteData.includes("-")) {
+      let p = parteData.split("-");
+      if (p[0].length === 4) { // Formato Americano YYYY-MM-DD
+        ano = parseInt(p[0]);
+        mes = parseInt(p[1]) - 1;
+        dia = parseInt(p[2]);
+      } else { // Formato DD-MM-YYYY
+        dia = parseInt(p[0]);
+        mes = parseInt(p[1]) - 1;
+        if (p.length === 3) ano = parseInt(p[2]);
+      }
+    }
+
+    if (isNaN(dia) || isNaN(mes) || isNaN(ano)) return null;
+
+    // Converte para milissegundos exatos (fixando a hora ao meio-dia para evitar bugs de fuso horário)
+    return new Date(ano, mes, dia, 12, 0, 0).getTime();
+  }
+
+  // ================= MOTOR DO FILTRO INTELIGENTE =================
+  function filtrarOS() {
+    var termo = document.getElementById('input-busca-os').value.toUpperCase().trim();
+    var filtroStatus = document.getElementById('filtro-status-os').value;
+    var dataInicioStr = document.getElementById('os-filtro-inicio').value;
+    var dataFimStr = document.getElementById('os-filtro-fim').value;
+
+    // Converte o que o utilizador escolheu no ecrã para a mesma matemática do leitor universal
+    var tsInicio = dataInicioStr ? converterDataParaTimestamp(dataInicioStr) : null;
+    var tsFim = dataFimStr ? converterDataParaTimestamp(dataFimStr) : null;
+    
+    // Alarga o filtro até ao último segundo do dia final
+    if (tsFim) {
+       var df = new Date(tsFim);
+       df.setHours(23, 59, 59);
+       tsFim = df.getTime();
+    }
+    // Começa logo à meia-noite do dia inicial
+    if (tsInicio) {
+       var di = new Date(tsInicio);
+       di.setHours(0, 0, 0);
+       tsInicio = di.getTime();
+    }
+
+    var filtrados = ordensServicoGlobal.filter(os => {
+      // Regra 1: Busca em Texto Rápido
+      var matchTexto = true;
+      if (termo !== "") {
+        matchTexto = String(os.id).toUpperCase().includes(termo) ||
+                     String(os.prefixo).toUpperCase().includes(termo) ||
+                     String(os.placa).toUpperCase().includes(termo) ||
+                     String(os.setor || "").toUpperCase().includes(termo);
+      }
+
+      // Regra 2: O.S. Abertas vs Fechadas
+      var matchStatus = true;
+      if (filtroStatus === "ABERTO") matchStatus = (os.status === "ABERTO");
+      else if (filtroStatus === "FECHADO") matchStatus = (os.status !== "ABERTO");
+
+      // Regra 3: Matemática do Calendário Corrigida
+      var matchData = true;
+      if (tsInicio || tsFim) {
+        var tsOS = converterDataParaTimestamp(os.dataInicial);
+        if (tsOS) {
+          if (tsInicio && tsOS < tsInicio) matchData = false;
+          if (tsFim && tsOS > tsFim) matchData = false;
+        } else {
+          matchData = false; // Oculta a linha se a data estiver em branco ou estragada na planilha
+        }
+      }
+
+      return matchTexto && matchStatus && matchData;
+    });
+
+    calcularEstatisticasOS(filtrados);
+    renderizarTabelaOS(filtrados);
+  }
+
+  function calcularEstatisticasOS(lista) {
+    osFiltradasImpressao = lista; // Guarda para o Relatório PDF
+    document.getElementById('os-total-periodo').innerText = lista.length + " O.S.";
+    
+    var divTop3 = document.getElementById('os-top3-veiculos');
+    if(lista.length === 0) {
+      divTop3.innerHTML = '<span style="color:#94a3b8; font-style:italic;">Nenhum registo no período.</span>';
+      return;
+    }
+
+    // Calcula as paradas por veículo
+    var contagem = {};
+    lista.forEach(os => {
+      if(os.prefixo) {
+        contagem[os.prefixo] = (contagem[os.prefixo] || 0) + 1;
+      }
+    });
+
+    // Ordena do maior para o menor e corta os 3 primeiros
+    var rank = Object.keys(contagem).map(key => {
+      return { prefixo: key, qtd: contagem[key] };
+    }).sort((a, b) => b.qtd - a.qtd);
+
+    var top3 = rank.slice(0, 3);
+    var htmlTop = '';
+    var medalhas = ['🥇', '🥈', '🥉'];
+    
+    top3.forEach((item, index) => {
+       htmlTop += `<div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #e2e8f0; padding: 2px 0;">
+                     <span>${medalhas[index]} <strong>${item.prefixo}</strong></span>
+                     <span style="color:#ef4444; font-weight:bold;">${item.qtd} paradas</span>
+                   </div>`;
+    });
+
+    divTop3.innerHTML = htmlTop;
+  }
+
+  function imprimirRelatorioOS() {
+    if (osFiltradasImpressao.length === 0) return alert("⚠️ Selecione um período que contenha Ordens de Serviço para gerar o lote em PDF.");
+    
+    var btn = event.target || document.querySelector('button[onclick="imprimirRelatorioOS()"]');
+    var txtOriginal = btn.innerText;
+    
+    btn.innerText = "⏳ A ler O.S. e a gerar PDF...";
+    btn.disabled = true;
+    btn.style.opacity = "0.7";
+
+    // Extrai apenas as linhas do Excel das O.S. que estão filtradas na tela
+    var linhasSelecionadas = osFiltradasImpressao.map(function(os) { return os.linhaOrigem; });
+
+    // Envia as linhas para o backend gerar o PDF de múltiplas páginas
+    google.script.run.withSuccessHandler(function(res) {
+      if(res.sucesso) {
+        // Converte o código que vem do servidor em ficheiro PDF e baixa automaticamente
+        var caracteresBinarios = atob(res.base64);
+        var arrayNumeros = new Array(caracteresBinarios.length);
+        for (var i = 0; i < caracteresBinarios.length; i++) {
+          arrayNumeros[i] = caracteresBinarios.charCodeAt(i);
+        }
+        var arrayBytes = new Uint8Array(arrayNumeros);
+        var blobArquivo = new Blob([arrayBytes], {type: 'application/pdf'});
+        
+        var urlBlob = URL.createObjectURL(blobArquivo);
+        var linkOculto = document.createElement('a');
+        linkOculto.href = urlBlob;
+        linkOculto.download = "Lote_Fichas_OS.pdf";
+        linkOculto.click();
+        
+        setTimeout(function() { URL.revokeObjectURL(urlBlob); }, 100);
+
+        btn.innerText = "✅ Lote PDF Baixado!";
+        btn.style.background = "#059669";
+      } else {
+        alert("❌ Falha crítica ao gerar PDF: " + res.mensagem);
+      }
+      
+      // Restaura o botão após 3 segundos
+      setTimeout(() => {
+        btn.innerText = txtOriginal;
+        btn.disabled = false;
+        btn.style.opacity = "1";
+        btn.style.background = "#475569";
+      }, 3000);
+
+    }).withFailureHandler(function(erro) {
+      alert("❌ Falha de comunicação com o servidor.");
+      btn.innerText = txtOriginal;
+      btn.disabled = false;
+      btn.style.opacity = "1";
+    }).gerarLotePdfOSBackend(linhasSelecionadas);
+  }
+
+  // O Desenhador da Tabela
+  function renderizarTabelaOS(lista) {
+    var tbody = document.getElementById('tbody-ordens-servico');
+    if(!tbody) return;
+    
+    if(lista.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="10" class="vazio-msg">Nenhuma Ordem de Serviço encontrada com os filtros atuais.</td></tr>';
+      return;
+    }
+    
+    var html = '';
+    lista.forEach(os => {
+      var isAberto = os.status === 'ABERTO';
+      var styleStatus = isAberto ? 'background:#fef3c7; color:#b45309; font-weight:800; padding:2px 6px; border-radius:4px;' : 'color:#059669; font-weight:700;';
+      var stylePrio = os.prioridade === 'EMERGENCIAL' ? 'color:#dc2626; font-weight:900;' : '';
+
+      var btnFechoRapido = isAberto
+        ? `<button onclick="event.stopPropagation(); acionarFecharOSPrevia(${os.linhaOrigem}, '${os.prefixo}')" style="background:#10b981; color:white; border:none; padding:5px 10px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:bold;">🔒 Fechar</button>`
+        : `<span style="font-size:11px; color:#64748b; font-weight:bold;">Encerrada</span>`;
+      
+      var dataTabela = os.dataInicial;
+      if(dataTabela && dataTabela.includes('T')) {
+        let p = dataTabela.split('T'); let d = p[0].split('-');
+        dataTabela = d[2] + '/' + d[1] + '/' + d[0] + ' ' + p[1];
+      }
+
+      html += `<tr onclick="exibirEspelhoOrdemServico(${os.linhaOrigem})" style="cursor:pointer; transition: background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'" title="Clique na linha para gerenciar O.S.">
+        <td style="font-weight:bold; color:#1e3a8a;">${os.id}</td>
+        <td>${dataTabela}</td>
+        <td><strong>${os.prefixo}</strong></td>
+        <td>${os.placa}</td>
+        <td>${os.tipoOS}</td>
+        <td>${os.setor}</td>
+        <td style="${stylePrio}">${os.prioridade}</td>
+        <td><span style="${styleStatus}">${os.status}</span></td>
+        <td style="color:#b91c1c; font-weight:bold;">R$ ${parseFloat(os.custoTotal).toFixed(2)}</td>
+        <td style="text-align:center; vertical-align:middle;">${btnFechoRapido}</td>
+      </tr>`;
+    });
+    tbody.innerHTML = html;
+  }
+
+  function exibirEspelhoOrdemServico(linha) {
+    document.getElementById('view-os-id').innerText = "Buscando...";
+    document.getElementById('modal-detalhes-os').style.display = 'flex';
+    document.getElementById('view-os-box-fechamento').style.display = 'none';
+
+    google.script.run.withSuccessHandler(function(res) {
+      if(!res.sucesso) {
+        fecharModal('modal-detalhes-os');
+        return alert("Erro ao carregar detalhes da O.S.");
+      }
+      var os = res.dados;
+
+      let dataFormatada = os.dataInicial;
+      if(dataFormatada && dataFormatada.includes('T')) {
+        let partes = dataFormatada.split('T');
+        let dataPedacos = partes[0].split('-');
+        dataFormatada = dataPedacos[2] + '/' + dataPedacos[1] + '/' + dataPedacos[0] + ' ' + partes[1];
+      }
+
+      document.getElementById('view-os-id').innerText = os.id;
+      document.getElementById('view-os-data').innerText = dataFormatada;
+      document.getElementById('view-os-prioridade').innerText = os.prioridade;
+      document.getElementById('view-os-solicitante').innerText = os.solicitante;
+      document.getElementById('view-os-prefixo').innerText = os.prefixo;
+      document.getElementById('view-os-placa').innerText = os.placa;
+      document.getElementById('view-os-km').innerText = parseFloat(os.km).toLocaleString('pt-BR');
+      document.getElementById('view-os-tipo').innerText = os.tipoOS;
+      document.getElementById('view-os-setor').innerText = os.setor;
+      document.getElementById('view-os-fornecedor').innerText = os.tipoOS === "EXTERNO" ? os.fornecedor : "Oficina Própria";
+      document.getElementById('view-os-defeito').innerText = os.defeito || "Nenhum relato informado.";
+      document.getElementById('view-os-diagnostico').innerText = os.diagnostico || "Aguardando parecer técnico final.";
+      document.getElementById('view-os-mecanico').innerText = os.mecanico;
+
+      var txtProds = os.produtos.map(p => `${p.nome} (Qtd: ${p.qtd}) -> R$ ${(p.qtd * p.valor).toFixed(2)}`).join('\n');
+      document.getElementById('view-os-produtos').innerText = txtProds || "Nenhum produto cadastrado.";
+
+      var txtServs = os.servicos.map(s => `${s.nome} (Qtd: ${s.qtd}) -> R$ ${(s.qtd * s.valor).toFixed(2)}`).join('\n');
+      document.getElementById('view-os-servicos').innerText = txtServs || "Nenhum serviço cadastrado.";
+
+      var badgeStatus = document.getElementById('view-os-status');
+      badgeStatus.innerText = os.status;
+      
+      var footerAcoes = document.getElementById('view-os-acoes-footer');
+      footerAcoes.style.width = "100%"; 
+      footerAcoes.style.display = "flex";
+      footerAcoes.style.gap = "10px";
+      footerAcoes.style.flexWrap = "wrap"; // Garante que os botões não ficam espremidos em ecrãs pequenos
+      
+      if (os.status === "ABERTO") {
+        badgeStatus.style.background = "#fef3c7"; badgeStatus.style.color = "#b45309";
+        document.getElementById('view-os-box-fechamento').style.display = 'none';
+        
+        // BOTÕES DA O.S. ABERTA
+        footerAcoes.innerHTML = `
+          <button onclick="acionarExcluirOSPrevia(${linha}, '${os.id}')" style="flex:1; min-width:100px; background:#ef4444; color:white; border:none; padding:12px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">🗑️ Excluir</button>
+          <button onclick="acionarEditarOSPrevia(${linha})" style="flex:1; min-width:100px; background:#3b82f6; color:white; border:none; padding:12px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">✏️ Editar</button>
+          <button onclick="acionarFecharOSPrevia(${linha}, '${os.prefixo}')" style="flex:1; min-width:100px; background:#10b981; color:white; border:none; padding:12px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">🔒 Fechar</button>
+          <button onclick="baixarPdfOrdemServico(${linha}, this)" style="flex:1; min-width:100px; background:#475569; color:white; border:none; padding:12px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer; transition: all 0.3s;">📄 Gerar PDF</button>
+        `;
+      } else {
+        badgeStatus.style.background = "#dcfce7"; badgeStatus.style.color = "#15803d";
+        document.getElementById('view-os-box-fechamento').style.display = 'block';
+        document.getElementById('view-os-data-fim').innerText = os.dataFechamento || "-";
+        document.getElementById('view-os-downtime').innerText = os.tempoTotal || "-";
+
+        // BOTÕES DA O.S. FECHADA (Agora com o botão de Editar incluído!)
+        footerAcoes.innerHTML = `
+          <button onclick="acionarExcluirOSPrevia(${linha}, '${os.id}')" style="flex:1; min-width:100px; background:#ef4444; color:white; border:none; padding:12px; border-radius:6px; font-size:13px; font-weight:bold; cursor:pointer;">🗑️ Excluir O.S.</button>
+          <button onclick="acionarEditarOSPrevia(${linha})" style="flex:1; min-width:100px; background:#3b82f6; color:white; border:none; padding:12px; border-radius:6px; font-size:13px; font-weight:bold; cursor:pointer;">✏️ Corrigir O.S.</button>
+          <button onclick="baixarPdfOrdemServico(${linha}, this)" style="flex:1; min-width:100px; background:#475569; color:white; border:none; padding:12px; border-radius:6px; font-size:13px; font-weight:bold; cursor:pointer; transition: all 0.3s;">📄 Gerar PDF</button>
+        `;
+      }
+    }).obterDetalhesOSBackend(linha);
+  }
+
+  function baixarPdfOrdemServico(linha, btnElement) {
+    var txtOriginal = btnElement.innerText;
+    btnElement.innerText = "⏳ A gerar documento...";
+    btnElement.disabled = true;
+    btnElement.style.opacity = "0.7";
+    
+    google.script.run.withSuccessHandler(function(res) {
+      if(res.sucesso) {
+        var caracteresBinarios = atob(res.base64);
+        var arrayNumeros = new Array(caracteresBinarios.length);
+        for (var i = 0; i < caracteresBinarios.length; i++) {
+          arrayNumeros[i] = caracteresBinarios.charCodeAt(i);
+        }
+        var arrayBytes = new Uint8Array(arrayNumeros);
+        var blobArquivo = new Blob([arrayBytes], {type: 'application/pdf'});
+        
+        var urlBlob = URL.createObjectURL(blobArquivo);
+        var linkOculto = document.createElement('a');
+        linkOculto.href = urlBlob;
+        linkOculto.download = res.filename;
+        linkOculto.click();
+        
+        setTimeout(function() { URL.revokeObjectURL(urlBlob); }, 100);
+
+        btnElement.innerText = "✅ PDF Baixado!";
+        btnElement.style.background = "#059669";
+        
+        setTimeout(() => {
+          btnElement.innerText = txtOriginal;
+          btnElement.disabled = false;
+          btnElement.style.opacity = "1";
+          btnElement.style.background = "#475569";
+        }, 2500);
+
+      } else {
+        alert("❌ Falha crítica ao processar PDF: " + res.mensagem);
+        btnElement.innerText = txtOriginal;
+        btnElement.disabled = false;
+        btnElement.style.opacity = "1";
+      }
+    }).withFailureHandler(function(erro) {
+      alert("❌ Falha de comunicação com o servidor.");
+      btnElement.innerText = txtOriginal;
+      btnElement.disabled = false;
+      btnElement.style.opacity = "1";
+    }).gerarPdfOrdemServicoBackend(linha);
+  }
+
+  function acionarEditarOSPrevia(linha) {
+    fecharModal('modal-detalhes-os');
+    abrirModalEditarOS(linha);
+  }
+
+  // ALTERADO (revisão 8): em vez de confirmar direto e fechar o modal de detalhes chamando
+  // fecharOrdemServico com um fakeEvent, agora fecha o modal de detalhes e abre o modal de
+  // finalização (#modal-fechar-os) para o usuário escolher a data/hora real do encerramento.
+  function acionarFecharOSPrevia(linha, prefixo) {
+    fecharModal('modal-detalhes-os');
+    fecharOrdemServico(null, linha, prefixo);
+  }
+
+  function acionarExcluirOSPrevia(linha, idOS) {
+    fecharModal('modal-detalhes-os');
+    excluirOrdemServico(linha, idOS);
+  }
+
+  // ALTERADO (revisão 8): em vez de fechar a O.S. direto com confirm() e gravar sempre o
+  // momento exato do clique, agora abre o modal #modal-fechar-os para o usuário escolher
+  // (ou confirmar) a data e hora reais da finalização antes de gravar.
+  function fecharOrdemServico(event, linhaOS, prefixo) {
+    document.getElementById('os-fechar-linha').value = linhaOS;
+    document.getElementById('os-fechar-prefixo').value = prefixo;
+    var now = new Date();
+    var tzOffset = now.getTimezoneOffset() * 60000;
+    document.getElementById('os-data-fechamento').value = (new Date(now - tzOffset)).toISOString().slice(0,16);
+    document.getElementById('modal-fechar-os').style.display = 'flex';
+  }
+
+  // NOVA FUNÇÃO (revisão 8): confirma o encerramento da O.S. com a data/hora de finalização
+  // escolhida pelo usuário no modal, enviando-a ao backend em vez do momento exato do clique.
+  function confirmarFechamentoOS(event) {
+    event.preventDefault();
+    var linhaOS = document.getElementById('os-fechar-linha').value;
+    var prefixo = document.getElementById('os-fechar-prefixo').value;
+    var dataFechamento = document.getElementById('os-data-fechamento').value;
+    var btn = event.target.querySelector('button[type="submit"]');
+    var txtOriginal = btn.innerText; btn.innerText = "⏳ Fechando..."; btn.disabled = true;
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      btn.innerText = txtOriginal; btn.disabled = false;
+      if(res.sucesso) { fecharModal('modal-fechar-os'); carregarListaOS(); }
+    }).withFailureHandler(function(erro) {
+      alert("❌ Falha de comunicação com o servidor.");
+      btn.innerText = txtOriginal; btn.disabled = false;
+    }).fecharOrdemServicoBackend(linhaOS, prefixo, dataFechamento);
+  }
+
+  function excluirOrdemServico(linhaOS, idOS) {
+    if(!confirm(`⚠️ ATENÇÃO: Tem a certeza que deseja EXCLUIR permanentemente a O.S. ${idOS} do banco de dados? Esta ação não pode ser desfeita.`)) return;
+    
+    var tbody = document.getElementById('tbody-ordens-servico');
+    tbody.innerHTML = `<tr><td colspan="10" class="vazio-msg">A eliminar ${idOS} permanentemente...</td></tr>`;
+
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      carregarListaOS(); 
+    }).excluirOrdemServicoBackend(linhaOS);
+  }
+  // ================= LISTA INTELIGENTE DO SOS =================
+  function popularDatalistSOS() {
+    var datalist = document.getElementById('lista-frota-sos');
+    if (typeof frotaGlobal !== 'undefined' && datalist) {
+      var html = '';
+      // Ordena de A a Z e exibe o Prefixo com a Placa ao lado
+      frotaGlobal.slice().sort((a,b) => a.prefixo.localeCompare(b.prefixo)).forEach(v => { 
+        html += `<option value="${v.prefixo}">${v.placa}</option>`; 
+      });
+      datalist.innerHTML = html;
+    }
+  }
+
+  // ================= AUTO-PREENCHER PLACA NO SOS =================
+  function preencherPlacaSOS(prefixoSelecionado) {
+    // Certifique-se de que o ID da placa no seu HTML do SOS é "sos-placa"
+    var inputPlaca = document.getElementById('sos-placa');
+    if (!inputPlaca) return;
+    
+    if (typeof frotaGlobal !== 'undefined') {
+      var veiculo = frotaGlobal.find(v => v.prefixo === prefixoSelecionado);
+      inputPlaca.value = veiculo ? veiculo.placa : "Não Encontrada";
+    }
+  }
+
+  // Garante que a lista do SOS carrega automaticamente quando o sistema inicia
+  document.addEventListener("DOMContentLoaded", function() {
+    setTimeout(function() {
+      popularDatalistSOS();
+    }, 2000); 
+  });
+</script>

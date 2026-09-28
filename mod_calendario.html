@@ -1,0 +1,104 @@
+<div id="aba-calendario-frota" class="aba-tela" style="display:none;">
+  
+  <div class="cal-header-container">
+    <h1 class="titulo-tela" style="margin:0;">📅 Calendário Inteligente</h1>
+    
+    <div class="cal-controls">
+      <button class="btn-ia-preditiva" onclick="executarAnalisePreditivaIA()">🤖 Rodar Análise Preditiva IA</button>
+      <div class="cal-select-group">
+        <select id="cal-mes" class="cal-select" style="min-width: 150px;" onchange="gerarCalendarioUI()"></select>
+        <select id="cal-ano" class="cal-select" style="min-width: 110px;" onchange="gerarCalendarioUI()"></select>
+      </div>
+    </div>
+  </div>
+
+  <div id="grid-calendario" class="grid-calendario-container">
+    <div class="dia-semana">DOM</div>
+    <div class="dia-semana">SEG</div>
+    <div class="dia-semana">TER</div>
+    <div class="dia-semana">QUA</div>
+    <div class="dia-semana">QUI</div>
+    <div class="dia-semana">SEX</div>
+    <div class="dia-semana">SÁB</div>
+  </div>
+</div>
+<div id="painel-detalhes-dia" style="display: none; margin-top: 25px; background: white; padding: 20px; border-radius: 12px; border: 1px solid #cbd5e1; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 15px; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+          <h3 id="titulo-detalhes-dia" style="margin: 0; color: #1e3a8a; font-size: 16px;">🗓️ Agenda de Manutenções</h3>
+          <button onclick="prepararNovaManutencaoDia()" style="background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">➕ Agendar para este dia</button>
+      </div>
+      <div id="lista-manutencoes-dia" style="display: flex; flex-direction: column; gap: 12px;">
+          </div>
+  </div>
+
+<div class="modal-overlay" id="modal-agendar-manutencao" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999;">
+  <div class="modal-box" style="max-width: 550px; width: 90%; background: white; border-radius: 12px; margin: auto; padding: 25px; max-height: 90vh; overflow-y: auto; box-sizing: border-box;">
+    
+    <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">
+      <h2 style="font-size: 16px; margin: 0; color: #1e293b;">📅 Agendar Manutenção de Frota</h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-agendar-manutencao')" style="font-size:24px; background:none; border:none; cursor:pointer; color:#64748b;">&times;</button>
+    </div>
+    
+    <div class="modal-body">
+      <form id="formAgendarManutencao" onsubmit="enviarFormularioCalendario(event)">
+        
+        <input type="hidden" id="cal-edit-rowindex">
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+          <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Data Escolhida</label>
+            <input type="date" id="cal-reg-data" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Veículo (Prefixo) *</label>
+            <select id="cal-reg-prefixo" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;"></select>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Descrição do Serviço *</label>
+          <input type="text" id="cal-reg-servico" required placeholder="Ex: TROCA DE ÓLEO, REVISÃO..." style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-transform: uppercase;">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+          <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Criticidade da Ação *</label>
+            <select id="cal-reg-criticidade" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold;">
+              <option value="Baixa" style="color:#10b981;">🟢 Baixa (Rotina / Filtros)</option>
+              <option value="Média" style="color:#f59e0b;">🟡 Média (Revisão Periódica)</option>
+              <option value="Alta" style="color:#ef4444;">🔴 Alta (Urgente / Parado)</option>
+            </select>
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Tipo de Entrada *</label>
+            <select id="cal-reg-tipo" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+              <option value="Preventiva">Preventiva (Agendada)</option>
+              <option value="Corretiva">Corretiva (Falha/Quebra)</option>
+              <option value="Preditiva">Preditiva (Análise IA)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+          <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Custo Estimado (R$)</label>
+            <input type="number" id="cal-reg-custo" step="0.01" placeholder="Ex: 450.00" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Oficina / Responsável</label>
+            <input type="text" id="cal-reg-responsavel" placeholder="Ex: MECÂNICO JOSÉ" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-transform: uppercase;">
+          </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Notas / Observações</label>
+          <textarea id="cal-reg-obs" rows="3" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; resize: vertical;"></textarea>
+        </div>
+
+        <button type="submit" class="btn-salvar" id="btn-submit-agenda" style="width: 100%; padding: 12px; background: #1e3a8a; color: white; border: none; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer;">
+          💾 Confirmar Agendamento
+        </button>
+      </form>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,943 @@
+<script>
+  // ================= FUNCIONÁRIOS E ESCALAS (RH) + ASSINATURA =================
+  function carregarListaFuncionarios() {
+    var container = document.getElementById('grid-lista-func'); 
+    if(!container) return; 
+    container.innerHTML = '<div class="vazio-msg" style="grid-column: 1 / -1; padding: 20px;">A carregar lista de funcionários...</div>';
+    
+    google.script.run.withSuccessHandler(function(lista) { 
+      funcionariosGlobal = lista; 
+      funcFiltrados = [...funcionariosGlobal]; 
+      aplicarOrdenacaoFunc(); 
+      preencherCheckboxesEscala();
+    }).listarFuncionarios();
+  }
+
+  function renderizarTabelaFuncionarios() {
+    var tbody = document.getElementById('tbody-lista-func'); 
+    var grid = document.getElementById('grid-lista-func');
+    if(!tbody || !grid) return;
+    
+    if (!funcFiltrados || funcFiltrados.length === 0) { 
+      tbody.innerHTML = '<tr><td colspan="6" class="vazio-msg">Nenhum funcionário encontrado.</td></tr>'; 
+      grid.innerHTML = '<div class="vazio-msg" style="grid-column: 1 / -1;">Nenhum funcionário encontrado.</div>';
+      return; 
+    }
+    
+    var htmlTabela = '';
+    var htmlCards = '';
+    
+    for (var i = 0; i < funcFiltrados.length; i++) {
+      var f = funcFiltrados[i]; 
+      var classeStatus = 'tag-cat'; 
+      if(f.status === 'ATIVO') classeStatus += ' ativo'; 
+      else if(f.status === 'INATIVO') classeStatus += ' inativo'; 
+      else classeStatus += ' compactador';
+
+      // ========================================================
+      // 1. MONTAGEM DA TABELA (Exatamente como você já tinha)
+      // ========================================================
+      htmlTabela += '<tr onclick="abrirModalHistoricoFunc(' + f.originalIndex + ')"><td>' + (f.matricula || '-') + '</td><td><strong>' + f.nome + '</strong></td><td>' + f.funcao + '</td><td>' + (f.equipe || '-') + '</td><td><span class="' + classeStatus + '">' + f.status + '</span></td><td><button class="btn-dossie-minimal" onclick="event.stopPropagation(); abrirModalHistoricoFunc(' + f.originalIndex + ')">📄 Abrir Ficha</button></td></tr>';
+
+      // ========================================================
+      // 2. MONTAGEM DOS CARTÕES (Com o avatar de engrenagem)
+      // ========================================================
+      var inicial = f.nome ? f.nome.charAt(0).toUpperCase() : '👤';
+      var matriculaTxt = f.matricula ? f.matricula : '-';
+      
+      htmlCards += `
+      <div class="card-funcionario" onclick="abrirModalHistoricoFunc(${f.originalIndex})">
+          <div class="card-funcionario-avatar-wrapper">
+              <div class="card-funcionario-avatar">${inicial}</div>
+              <div class="avatar-engrenagem">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+              </div>
+          </div>
+          <div class="card-funcionario-info">
+              <div class="card-funcionario-nome" title="${f.nome}">${f.nome}</div>
+              <div class="card-funcionario-funcao">${f.funcao}</div>
+              <div class="card-funcionario-mat">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                  Matrícula: ${matriculaTxt}
+              </div>
+          </div>
+          <div class="card-funcionario-status">
+              <span class="${classeStatus}">${f.status}</span>
+          </div>
+      </div>`;
+    }
+    
+    // Injeta os dados nos dois lados de forma segura
+    tbody.innerHTML = htmlTabela;
+    grid.innerHTML = htmlCards;
+  }
+
+  function manipularBuscaFuncionario() {
+    var input = document.getElementById("input-busca-func").value.toUpperCase();
+    funcFiltrados = funcionariosGlobal.filter(f => (f.nome + " " + f.matricula + " " + f.funcao).toUpperCase().indexOf(input) > -1);
+    aplicarOrdenacaoFunc();
+  }
+
+  function ordenarTabelaFunc(coluna) {
+    if (ordenacaoFunc.coluna === coluna) { 
+        ordenacaoFunc.direcao = ordenacaoFunc.direcao === 'asc' ? 'desc' : 'asc'; 
+    } else { 
+        ordenacaoFunc.coluna = coluna; 
+        ordenacaoFunc.direcao = 'asc'; 
+    }
+    aplicarOrdenacaoFunc();
+  }
+
+  function aplicarOrdenacaoFunc() {
+    var col = ordenacaoFunc.coluna; 
+    var dir = ordenacaoFunc.direcao;
+    funcFiltrados.sort((a,b) => { 
+        var valA = (a[col] || "").toString().toUpperCase(); 
+        var valB = (b[col] || "").toString().toUpperCase(); 
+        if (valA < valB) return dir === 'asc' ? -1 : 1; 
+        if (valA > valB) return dir === 'asc' ? 1 : -1; 
+        return 0; 
+    });
+    renderizarTabelaFuncionarios();
+  }
+
+  function abrirModalNovoFuncionario() { document.getElementById('modal-novo-funcionario').style.display = 'flex'; }
+  function abrirModalNovaEscala() { document.getElementById('modal-criar-escala').style.display = 'flex'; preencherDataHoraAtual(); }
+
+  function preencherCheckboxesEscala() {
+    var div = document.getElementById('lista-checkbox-func'); if(!div) return;
+    var ativos = funcionariosGlobal.filter(f => f.status === 'ATIVO'); ativos.sort((a,b) => a.nome.localeCompare(b.nome));
+    var html = '';
+    for(var i=0; i<ativos.length; i++) { 
+      html += '<div class="check-item-escala">';
+      html += '<label><input type="checkbox" class="chk-func-escala" value="' + ativos[i].originalIndex + '" onchange="toggleFolgaEscala(this, '+ativos[i].originalIndex+')"> ' + ativos[i].nome + ' <span class="funcao-badge">' + ativos[i].funcao + '</span></label>'; 
+      html += '<input type="date" id="input-folga-func-' + ativos[i].originalIndex + '" class="input-folga-individual" title="Data da Folga deste funcionário">';
+      html += '</div>';
+    }
+    div.innerHTML = html || '<div class="vazio-msg">Nenhum funcionário ativo.</div>';
+  }
+
+  function toggleFolgaEscala(checkbox, index) {
+    var inputFolga = document.getElementById('input-folga-func-' + index);
+    if(checkbox.checked) { inputFolga.style.display = 'block'; } else { inputFolga.style.display = 'none'; inputFolga.value = ''; }
+  }
+
+  function enviarFormularioFuncionario(event) {
+    event.preventDefault(); var form = document.getElementById('formFuncionario'); var btn = document.getElementById('btn-submit-func'); var textElem = btn.querySelector('.btn-text');
+    btn.classList.add('carregando'); btn.disabled = true; textElem.innerText = "A guardar (Upload)...";
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem); if(res.sucesso) { form.reset(); fecharModal('modal-novo-funcionario'); carregarListaFuncionarios(); }
+      btn.classList.remove('carregando'); btn.disabled = false; textElem.innerText = "Salvar Funcionário";
+    }).salvarFuncionarioForm(form);
+  }
+
+function mudarVisualizacao(tipo) {
+    var botoes = document.querySelectorAll('.btn-view-toggle');
+    botoes.forEach(function(btn) {
+      btn.classList.remove('ativo');
+      btn.style.background = 'white';
+      btn.style.color = '#475569';
+      btn.style.borderColor = '#cbd5e1';
+    });
+    
+    var btnClicado = event.currentTarget;
+    btnClicado.classList.add('ativo');
+    btnClicado.style.background = '#3b82f6';
+    btnClicado.style.color = 'white';
+    btnClicado.style.borderColor = '#3b82f6';
+    
+    if (tipo === 'cards') {
+      document.getElementById('grid-lista-func').style.display = 'grid';
+      document.getElementById('tabela-lista-func').style.display = 'none';
+    } else {
+      document.getElementById('grid-lista-func').style.display = 'none';
+      document.getElementById('tabela-lista-func').style.display = 'block';
+    }
+  }
+
+  function enviarFormularioEscala(event) {
+    event.preventDefault();
+    
+    var btn = document.getElementById('btn-submit-escala'); 
+    var textElem = btn ? btn.querySelector('.btn-text') : null;
+    var txtOriginal = textElem ? textElem.innerText : "Salvar Escala e Gerar PDF";
+    
+    if (btn) {
+      btn.classList.add('carregando'); 
+      btn.disabled = true; 
+      if (textElem) textElem.innerText = "⏳ A gerar escala...";
+    }
+
+    try {
+      var checks = document.querySelectorAll('.chk-func-escala:checked');
+      if(checks.length === 0) {
+        if (btn) { btn.classList.remove('carregando'); btn.disabled = false; if (textElem) textElem.innerText = txtOriginal; }
+        return alert("⚠️ Selecione pelo menos um funcionário para a escala!");
+      }
+      
+      var funcionariosSelecionados = [];
+      checks.forEach(function(c) { 
+        var func = funcionariosGlobal.find(f => f.originalIndex == c.value); 
+        if(func) {
+          var inputFolga = document.getElementById('input-folga-func-' + c.value);
+          func.folga = inputFolga ? inputFolga.value : "";
+          funcionariosSelecionados.push(func); 
+        }
+      });
+      
+      var dados = { 
+        data: document.getElementById('escala-data').value, 
+        tipoEscala: document.getElementById('escala-tipo-input').value, 
+        funcionariosSelecionados: funcionariosSelecionados 
+      };
+      
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (btn) { 
+            btn.classList.remove('carregando'); 
+            btn.disabled = false; 
+            if (textElem) textElem.innerText = txtOriginal; 
+          }
+
+          try {
+            if(res.sucesso) { 
+              var form = document.getElementById('formEscala');
+              if (form) form.reset(); 
+              
+              if (typeof fecharModal === 'function') fecharModal('modal-criar-escala'); 
+              if (typeof carregarPainelEscalasVisuais === 'function') carregarPainelEscalasVisuais();
+              
+              var escalaRecemCriada = { data: res.dataEscala, tipo: res.tipoEscala, funcionarios: funcionariosSelecionados };
+              
+              if (typeof abrirModalImpressaoExata === 'function') {
+                abrirModalImpressaoExata(escalaRecemCriada);
+              }
+            } else { 
+              alert(res.mensagem); 
+            }
+          } catch (erroVisual) {
+             alert("✅ A escala foi gravada no banco de dados, mas ocorreu um erro na tela: " + erroVisual.message);
+          }
+        })
+        .withFailureHandler(function(erro) {
+          alert("❌ Falha de comunicação com o servidor. Verifique a internet e tente novamente.");
+          if (btn) { btn.classList.remove('carregando'); btn.disabled = false; if (textElem) textElem.innerText = txtOriginal; }
+        })
+        .salvarEscalaTrabalho(dados);
+        
+    } catch (erroLocal) {
+      alert("❌ Ocorreu um erro ao processar o formulário: " + erroLocal.message);
+      if (btn) { btn.classList.remove('carregando'); btn.disabled = false; if (textElem) textElem.innerText = txtOriginal; }
+    }
+  }
+
+  function abrirModalHistoricoFunc(indexOriginal) {
+    var f = funcionariosGlobal.find(item => item.originalIndex === indexOriginal); if(!f) return;
+    funcSelecionadoParaRH = f; 
+    document.getElementById('hist-nome').innerText = f.nome; document.getElementById('hist-status').innerText = f.status; 
+    let cl = 'tag-cat'; if(f.status === 'ATIVO') cl += ' ativo'; else if(f.status === 'INATIVO') cl += ' inativo'; else cl += ' compactador';
+    document.getElementById('hist-status').className = cl;
+    document.getElementById('hist-funcao').innerText = f.funcao; document.getElementById('hist-mat').innerText = f.matricula || "N/A"; document.getElementById('hist-cpf').innerText = f.cpf || "N/A"; document.getElementById('hist-adm').innerText = f.admissao || "N/A";
+    document.getElementById('edit-equipe').value = f.equipe || ""; document.getElementById('edit-status').value = f.status || "ATIVO";
+    var imgAssinatura = document.getElementById('hist-img-assinatura'); var msgSemAssinatura = document.getElementById('hist-sem-assinatura');
+    if(f.assinatura && f.assinatura.startsWith('http')) { imgAssinatura.src = f.assinatura; imgAssinatura.style.display = 'block'; msgSemAssinatura.style.display = 'none'; } 
+    else { imgAssinatura.style.display = 'none'; msgSemAssinatura.style.display = 'block'; }
+    ['escala', 'atestado', 'adv', 'susp'].forEach(id => { var tbl = document.getElementById('table-hist-'+id); if(tbl) tbl.innerHTML = '<tbody><tr><td class="vazio-msg">A carregar dados da nuvem...</td></tr></tbody>'; if(document.getElementById('hist-count-'+id)) document.getElementById('hist-count-'+id).innerText = "0"; });
+    document.getElementById('modal-historico-func').style.display = 'flex';
+    atualizarTabelasHistorico(f.nome);
+  }
+
+  function salvarEdicaoFuncionario(btn) {
+    if(!funcSelecionadoParaRH) return;
+    var novaEquipe = document.getElementById('edit-equipe').value; var novoStatus = document.getElementById('edit-status').value;
+    var textoOriginal = btn.innerText; btn.innerText = "A guardar..."; btn.disabled = true;
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      if(res.sucesso) {
+        funcSelecionadoParaRH.equipe = novaEquipe.toUpperCase(); funcSelecionadoParaRH.status = novoStatus.toUpperCase();
+        document.getElementById('hist-status').innerText = funcSelecionadoParaRH.status;
+        let cl = 'tag-cat'; if(funcSelecionadoParaRH.status === 'ATIVO') cl += ' ativo'; else if(funcSelecionadoParaRH.status === 'INATIVO') cl += ' inativo'; else cl += ' compactador';
+        document.getElementById('hist-status').className = cl; aplicarOrdenacaoFunc();
+      }
+      btn.innerText = textoOriginal; btn.disabled = false;
+    }).atualizarFuncionario(funcSelecionadoParaRH.originalIndex, novaEquipe, novoStatus);
+  }
+
+  async function uploadNovaAssinatura(inputElem) {
+    if(!inputElem.files || inputElem.files.length === 0) return;
+    var file = inputElem.files[0];
+    var btn = inputElem.nextElementSibling; var textoOriginal = btn.innerText;
+    btn.innerText = "⏳ Enviando..."; btn.disabled = true;
+    try {
+      let base64Full = await toBase64(file); let base64Data = base64Full.split(',')[1];
+      google.script.run.withSuccessHandler(function(res) {
+        alert(res.mensagem);
+        if(res.sucesso) {
+          document.getElementById('hist-img-assinatura').src = res.url; document.getElementById('hist-img-assinatura').style.display = 'block'; document.getElementById('hist-sem-assinatura').style.display = 'none';
+          if(funcSelecionadoParaRH) funcSelecionadoParaRH.assinatura = res.url; 
+        }
+        btn.innerText = textoOriginal; btn.disabled = false; inputElem.value = '';
+      }).withFailureHandler(function(e) { alert("Erro no Upload: " + e); btn.innerText = textoOriginal; btn.disabled = false; inputElem.value = ''; }).atualizarAssinaturaNoBanco(funcSelecionadoParaRH.originalIndex, funcSelecionadoParaRH.nome, base64Data, file.type, file.name);
+    } catch(e) { alert("Erro ao ler arquivo."); btn.innerText = textoOriginal; btn.disabled = false; inputElem.value = ''; }
+  }
+
+  function atualizarTabelasHistorico(nome) {
+    google.script.run.withSuccessHandler(function(historico) {
+      function renderizarMiniTabela(idTabela, idCount, arrayDados, cols) {
+        if(idCount && document.getElementById(idCount)) document.getElementById(idCount).innerText = arrayDados.length;
+        var tableElement = document.getElementById(idTabela); if(!tableElement) return;
+        if(arrayDados.length === 0) { tableElement.innerHTML = '<tbody><tr><td class="vazio-msg" style="text-align:left;">Nenhum registo encontrado.</td></tr></tbody>'; return; }
+        var html = '<thead><tr>'; cols.forEach(c => html += '<th>' + c.label + '</th>'); html += '</tr></thead><tbody>';
+        arrayDados.forEach(item => { 
+          html += '<tr>'; 
+          cols.forEach(c => {
+            if(c.key === 'arquivo' && item[c.key] && item[c.key].startsWith('http')) { html += '<td><a href="'+item[c.key]+'" target="_blank" style="color:#0284c7; text-decoration:none;">📄 Ver</a></td>'; } 
+            else { html += '<td>' + (item[c.key] || '-') + '</td>'; }
+          }); 
+          html += '</tr>'; 
+        }); html += '</tbody>';
+        tableElement.innerHTML = html;
+      }
+      renderizarMiniTabela('table-hist-escala', 'hist-count-escala', historico.escalas, [ {label: "Data", key: "data"}, {label: "Tipo", key: "tipo"}, {label: "Folga", key: "dataFolga"} ]);
+      renderizarMiniTabela('table-hist-atestado', null, historico.atestados, [ {label: "Atestado", key: "data"}, {label: "Retorno", key: "retorno"}, {label: "Dias", key: "dias"}, {label: "Motivo/CID", key: "motivo"}, {label: "Anexo", key: "arquivo"} ]);
+      renderizarMiniTabela('table-hist-adv', null, historico.advertencias, [ {label: "Data", key: "data"}, {label: "Tipo/Artigo", key: "tipo"}, {label: "Motivo", key: "motivo"}, {label: "Anexo", key: "arquivo"} ]);
+      renderizarMiniTabela('table-hist-susp', null, historico.suspensoes, [ {label: "Data", key: "data"}, {label: "Tipo/Artigo", key: "tipo"}, {label: "Motivo", key: "motivo"}, {label: "Anexo", key: "arquivo"} ]);
+    }).obterHistoricoFuncionario(nome);
+  }
+
+  let escalaSelecionadaParaEdicaoLocal = null;
+
+  function carregarPainelEscalasVisuais() {
+    var grid = document.getElementById('grid-lista-escalas'); 
+    if(!grid) return;
+    grid.innerHTML = '<div class="vazio-msg" style="grid-column: 1 / -1;">A sincronizar escalas geradas...</div>';
+    
+    google.script.run.withSuccessHandler(function(lista) {
+      escalasGlobais = lista; 
+      if(!lista || lista.length === 0) { 
+        grid.innerHTML = '<div class="vazio-msg" style="grid-column: 1 / -1;">Nenhuma escala registada.</div>'; 
+        return; 
+      }
+      
+      var html = '';
+      for(var i=0; i<lista.length; i++) {
+        var esc = lista[i]; 
+        
+        html += `
+          <div class="card-escala" onclick="abrirModalImpressaoEscala(${i})" style="display:flex; flex-direction:column; justify-content:space-between; cursor:pointer;">
+            <div>
+              <h4>${esc.data} <span class="tag-cat ativo">${esc.tipo}</span></h4>
+              <p style="margin-bottom: 5px;">👥 ${esc.funcionarios.length} Funcionário(s) escalado(s)</p>
+            </div>
+            
+            <div style="text-align: right; margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+              <button onclick="event.stopPropagation(); acionarExcluirEscala('${esc.data}', '${esc.tipo}')" 
+                      style="background: #ef4444; color: white; border: none; padding: 5px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;"
+                      title="Excluir permanentemente esta escala">
+                🗑️ Excluir
+              </button>
+            </div>
+          </div>
+        `;
+      }
+      grid.innerHTML = html;
+    }).listarEscalasAgrupadas();
+  }
+
+  function abrirModalImpressaoEscala(index) {
+    var escala = escalasGlobais[index]; 
+    if(!escala) return;
+    
+    escalaSelecionadaParaEdicaoLocal = escala; 
+    
+    document.getElementById('edicao-escala-tipo-visual').innerText = escala.tipo;
+    document.getElementById('edicao-escala-data-visual').innerText = escala.data;
+    
+    renderizarTabelaEdicaoFolgas(escala.funcionarios);
+    
+    document.getElementById('btn-salvar-edicao-escala').onclick = function() { salvarAlteracoesEdicaoEscala(); };
+    document.getElementById('btn-imprimir-escala-detalhe').onclick = function() { salvarEImprimirEscala(); };
+    
+    document.getElementById('modal-escala-detalhes-editavel').style.display = 'flex';
+  }
+
+  function renderizarTabelaEdicaoFolgas(funcionarios) {
+    var tbody = document.getElementById('tbody-edicao-escala'); 
+    var html = '';
+    
+    for(var i=0; i<funcionarios.length; i++) {
+      var f = funcionarios[i]; 
+      var valorFolga = f.folga ? f.folga : ""; 
+      
+      html += '<tr>';
+      html += '<td>' + (f.matricula || '-') + '</td>';
+      html += '<td style="font-weight:700;">' + f.nome + '</td>';
+      html += '<td>' + f.funcao + '</td>';
+      html += '<td><input type="text" value="' + valorFolga + '" class="input-edicao-folga input-folga-hibrida" data-idx="' + i + '" placeholder="Ex: 25/06 ou PAGO"></td>';
+      
+      html += '<td style="text-align:center;">';
+      html += '<button onclick="abrirSelectTrocaFuncionario(' + i + ')" class="btn-anexo btn-anexo-view" title="Trocar Funcionário" style="padding:4px 8px; margin-right:4px;">🔄</button>';
+      html += '<button onclick="removerFuncionarioDaEscala(' + i + ')" class="btn-anexo btn-anexo-delete" title="Remover da Escala" style="padding:4px 8px;">🗑️</button>';
+      html += '</td>';
+      html += '</tr>';
+    }
+    tbody.innerHTML = html; 
+  }
+
+  function salvarEstadoInputsEscala() {
+    var inputs = document.querySelectorAll('#tbody-edicao-escala .input-folga-hibrida');
+    inputs.forEach(input => {
+      var idxFunc = parseInt(input.getAttribute('data-idx'));
+      if(escalaSelecionadaParaEdicaoLocal.funcionarios[idxFunc]) {
+        escalaSelecionadaParaEdicaoLocal.funcionarios[idxFunc].folga = input.value.toUpperCase();
+      }
+    });
+  }
+
+  function removerFuncionarioDaEscala(idx) {
+    if(!confirm("Tem certeza que deseja remover este funcionário da escala?")) return;
+    salvarEstadoInputsEscala(); 
+    escalaSelecionadaParaEdicaoLocal.funcionarios.splice(idx, 1);
+    renderizarTabelaEdicaoFolgas(escalaSelecionadaParaEdicaoLocal.funcionarios);
+  }
+
+  function abrirSelectTrocaFuncionario(idx) {
+    salvarEstadoInputsEscala(); 
+    
+    var options = '<option value="" disabled selected>Selecione o substituto...</option>';
+    var ativos = funcionariosGlobal.filter(f => f.status === 'ATIVO');
+    ativos.sort((a,b) => a.nome.localeCompare(b.nome));
+
+    ativos.forEach(f => {
+      options += `<option value="${f.originalIndex}">${f.nome} (${f.funcao})</option>`;
+    });
+
+    var tbody = document.getElementById('tbody-edicao-escala');
+    var tr = tbody.children[idx];
+
+    tr.children[1].innerHTML = `<select onchange="confirmarTrocaFuncionario(${idx}, this.value)" style="width:100%; padding:6px; font-size:11px; border-radius:4px; border:1px solid #cbd5e1;">${options}</select>`;
+  }
+
+  function confirmarTrocaFuncionario(idxArrayEscala, idxOriginalFuncionario) {
+    var novoFunc = funcionariosGlobal.find(f => f.originalIndex == idxOriginalFuncionario);
+    if(novoFunc) {
+      novoFunc.folga = escalaSelecionadaParaEdicaoLocal.funcionarios[idxArrayEscala].folga;
+      escalaSelecionadaParaEdicaoLocal.funcionarios[idxArrayEscala] = novoFunc;
+      renderizarTabelaEdicaoFolgas(escalaSelecionadaParaEdicaoLocal.funcionarios); 
+    }
+  }
+
+  function salvarAlteracoesEdicaoEscala() {
+    if(!escalaSelecionadaParaEdicaoLocal) return;
+    
+    var inputs = document.querySelectorAll('#tbody-edicao-escala .input-folga-hibrida');
+    inputs.forEach(input => {
+      var idxFunc = parseInt(input.getAttribute('data-idx'));
+      var novoValor = input.value.trim().toUpperCase(); 
+      
+      if(escalaSelecionadaParaEdicaoLocal.funcionarios[idxFunc]) {
+        escalaSelecionadaParaEdicaoLocal.funcionarios[idxFunc].folga = novoValor;
+      }
+    });
+    
+    alert("Alterações salvas! Os dados modificados já estão prontos para irem para o papel.");
+  }
+
+  function salvarEImprimirEscala() {
+    salvarAlteracoesEdicaoEscala(); 
+    preencherTemplateImpressaoFiel(escalaSelecionadaParaEdicaoLocal); 
+    setTimeout(function(){ window.print(); }, 250); 
+  }
+
+  function preencherTemplateImpressaoFiel(esc) {
+    document.getElementById('print-escala-tipo').innerText = esc.tipo;
+    document.getElementById('print-escala-data').innerText = esc.data; 
+    
+    var tbody = document.getElementById('tbody-print-escala'); 
+    var html = '';
+    
+    for(var i=0; i<esc.funcionarios.length; i++) {
+      var f = esc.funcionarios[i]; 
+      var valorFolgaPrint = f.folga ? f.folga : "-"; 
+      
+      html += '<tr>';
+      html += '<td class="col-mat">' + (f.matricula || '-') + '</td>';
+      html += '<td class="col-funcao">' + f.funcao + '</td>'; 
+      html += '<td class="col-func">' + f.nome + '</td>';      
+      html += '<td class="col-folga-print">' + valorFolgaPrint + '</td>'; 
+      html += '<td class="col-ass"></td>'; 
+      html += '</tr>';
+    }
+    
+    tbody.innerHTML = html; 
+  }
+
+  // ================= AÇÃO: EXCLUIR ESCALA (BLINDADA) =================
+  function acionarExcluirEscala(dataEscala, tipoEscala) {
+    if(!confirm("⚠️ ATENÇÃO!\nTem certeza que deseja EXCLUIR toda a escala de " + tipoEscala + " do dia " + dataEscala + "?\n\nIsso apagará o registro de TODOS os funcionários alocados neste dia e não poderá ser desfeito.")) {
+      return; 
+    }
+
+    alert("⏳ A excluir escala... Clique em OK e aguarde um momento.");
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        alert(res.mensagem);
+        if(res.sucesso) {
+          if(typeof carregarPainelEscalasVisuais === 'function') {
+            carregarPainelEscalasVisuais();
+          }
+        }
+      })
+      .withFailureHandler(function(erro) {
+        alert("❌ Falha de comunicação com o servidor ao tentar excluir.");
+      })
+      .excluirEscalaBackend(dataEscala, tipoEscala);
+  }
+  // ================= PAINEL DE ASSINATURA DIGITAL (CANVAS) =================
+  var canvasAssinatura = null;
+  var contextoCanvas = null;
+  var estaDesenhando = false;
+
+  function abrirPainelAssinatura() {
+    document.getElementById('modal-assinatura-digital').style.display = 'flex';
+    
+    if (!canvasAssinatura) {
+      canvasAssinatura = document.getElementById('canvas-assinatura');
+      contextoCanvas = canvasAssinatura.getContext('2d');
+      contextoCanvas.strokeStyle = '#0f172a'; // Cor do traço escuro
+      contextoCanvas.lineWidth = 3;           // Espessura da linha
+      contextoCanvas.lineCap = 'round';
+      contextoCanvas.lineJoin = 'round';
+      
+      // Captura de movimentos com o Rato (Computador)
+      canvasAssinatura.addEventListener('mousedown', function(e) {
+        estaDesenhando = true;
+        var r = canvasAssinatura.getBoundingClientRect();
+        contextoCanvas.beginPath();
+        contextoCanvas.moveTo(e.clientX - r.left, e.clientY - r.top);
+      });
+      canvasAssinatura.addEventListener('mousemove', function(e) {
+        if (!estaDesenhando) return;
+        var r = canvasAssinatura.getBoundingClientRect();
+        contextoCanvas.lineTo(e.clientX - r.left, e.clientY - r.top);
+        contextoCanvas.stroke();
+      });
+      canvasAssinatura.addEventListener('mouseup', function() { estaDesenhando = false; });
+      canvasAssinatura.addEventListener('mouseleave', function() { estaDesenhando = false; });
+      
+      // Captura de movimentos com o Dedo (Touch no Telemóvel)
+      canvasAssinatura.addEventListener('touchstart', function(e) {
+        e.preventDefault();
+        estaDesenhando = true;
+        var r = canvasAssinatura.getBoundingClientRect();
+        var t = e.touches[0];
+        contextoCanvas.beginPath();
+        contextoCanvas.moveTo(t.clientX - r.left, t.clientY - r.top);
+      }, { passive: false });
+      
+      canvasAssinatura.addEventListener('touchmove', function(e) {
+        e.preventDefault();
+        if (!estaDesenhando) return;
+        var r = canvasAssinatura.getBoundingClientRect();
+        var t = e.touches[0];
+        contextoCanvas.lineTo(t.clientX - r.left, t.top - r.top);
+        contextoCanvas.lineTo(t.clientX - r.left, t.clientY - r.top);
+        contextoCanvas.stroke();
+      }, { passive: false });
+      
+      canvasAssinatura.addEventListener('touchend', function() { estaDesenhando = false; });
+    }
+    limparCanvasAssinatura();
+  }
+
+  function limparCanvasAssinatura() {
+    if (canvasAssinatura && contextoCanvas) {
+      contextoCanvas.clearRect(0, 0, canvasAssinatura.width, canvasAssinatura.height);
+    }
+  }
+
+  function salvarAssinaturaDigital() {
+    if (!funcSelecionadoParaRH) return alert("Erro: Nenhum funcionário ativo selecionado.");
+    
+    // Teste de segurança para verificar se o quadro não está em branco
+    var espelho = document.createElement('canvas');
+    espelho.width = canvasAssinatura.width; espelho.height = canvasAssinatura.height;
+    if (canvasAssinatura.toDataURL() === espelho.toDataURL()) {
+      return alert("⚠️ Por favor, realize a assinatura antes de salvar.");
+    }
+    
+    var btn = document.getElementById('btn-saved-assinatura-canvas');
+    var btn = document.getElementById('btn-salvar-assinatura-canvas');
+    var txtOriginal = btn.innerText;
+    btn.innerText = "⏳ A vincular..."; btn.disabled = true;
+    
+    // Converte os pixels do Canvas diretamente em Base64 binário
+    var base64Completo = canvasAssinatura.toDataURL('image/png');
+    var base64Dados = base64Completo.split(',')[1];
+    
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      if(res.sucesso) {
+        document.getElementById('hist-img-assinatura').src = res.url;
+        document.getElementById('hist-img-assinatura').style.display = 'block';
+        document.getElementById('hist-sem-assinatura').style.display = 'none';
+        funcSelecionadoParaRH.assinatura = res.url; 
+        document.getElementById('modal-assinatura-digital').style.display = 'none';
+      }
+      btn.innerText = txtOriginal; btn.disabled = false;
+    }).withFailureHandler(function(e) {
+      alert("Erro crítico ao salvar: " + e);
+      btn.innerText = txtOriginal; btn.disabled = false;
+    }).atualizarAssinaturaNoBanco(funcSelecionadoParaRH.originalIndex, funcSelecionadoParaRH.nome, base64Dados, 'image/png', 'assinatura_digital.png');
+  }
+// ================= TABELAS CLICÁVEIS E MODAL DE VISUALIZAÇÃO =================
+var listaOcorrenciasMemoria = []; // Guarda a lista na RAM para clicar e abrir rápido
+
+// Função de segurança para nunca errar a tabela
+function obterTbodyId(tipo) {
+   if (tipo === 'ATESTADOS') return 'tbody-atestados';
+   if (tipo === 'ADVERTÊNCIA') return 'tbody-advertencia';
+   if (tipo === 'SUSPENSÃO') return 'tbody-suspensao';
+   return '';
+}
+
+function carregarTabelaOcorrenciasGeral(tipo) {
+  var tbodyId = obterTbodyId(tipo);
+  var tbody = document.getElementById(tbodyId);
+  
+  if(tbody) tbody.innerHTML = "<tr><td colspan='5' class='vazio-msg'>⏳ A sincronizar com o banco de dados...</td></tr>";
+
+  google.script.run
+    .withSuccessHandler(function(lista) {
+      listaOcorrenciasMemoria = lista; // Grava na memória para uso rápido
+      var html = "";
+      
+      if(!lista || lista.length === 0) {
+        html = "<tr><td colspan='5' class='vazio-msg'>Nenhum registro encontrado no banco de dados.</td></tr>";
+      } else {
+        lista.forEach((item, idx) => {
+          html += `<tr onclick="abrirEspelhoOcorrencia('${tipo}', ${idx})" style="cursor:pointer; border-bottom:1px solid #e2e8f0; transition:0.2s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">`;
+          
+          if(tipo === 'ATESTADOS') {
+            html += `<td>${item.id}</td><td><b>${item.funcionario}</b></td><td>${item.data}</td><td><span class="tag-cat ativo">${item.dias}</span></td>`;
+          } else {
+            var resumoAto = item.ato ? item.ato.substring(0, 45) : "";
+            html += `<td>${item.id}</td><td>${item.data}</td><td><b>${item.funcionario}</b></td><td style="font-size:11px;">${resumoAto}...</td>`;
+          }
+          
+          // Botões de Ação na Tabela
+          html += `<td>
+                      <button onclick="event.stopPropagation(); abrirEspelhoOcorrencia('${tipo}', ${idx})" class="btn-acao-rapida" style="color:#3b82f6;"><i class="fa-solid fa-eye"></i></button>
+                      <button onclick="event.stopPropagation(); deletarOcorrenciaGeral('${tipo}', '${item.id}')" class="btn-acao-rapida" style="color:#ef4444; margin-left:10px;"><i class="fa-solid fa-trash"></i></button>
+                   </td></tr>`;
+        });
+      }
+      if(tbody) tbody.innerHTML = html;
+    })
+    .withFailureHandler(function(err) {
+      // 🔥 Proteção: Se a internet falhar ou a aba não existir, ele avisa!
+      if(tbody) tbody.innerHTML = `<tr><td colspan='5' class='vazio-msg' style='color:#ef4444; font-weight:bold;'>❌ Falha na sincronização: ${err.message}</td></tr>`;
+    })
+    .listarOcorrenciasTotaisBackend(tipo);
+}
+
+function abrirEspelhoOcorrencia(tipo, idx) {
+  var item = listaOcorrenciasMemoria[idx];
+  if(!item) return;
+
+  document.getElementById('espelho-oco-titulo').innerText = "Detalhes: " + item.id;
+  
+  var html = `<strong>Funcionário:</strong> ${item.funcionario}<br>`;
+  if(tipo === 'ATESTADOS') {
+      html += `<strong>Data Lançamento:</strong> ${item.data}<br><strong>Motivo/CID:</strong> ${item.motivo}<br><strong>Duração:</strong> ${item.dias}`;
+  } else {
+      html += `<strong>Data Emissão:</strong> ${item.data}<br><br><strong>Relato:</strong><br><div style="background:#f1f5f9; padding:10px; border-radius:6px; margin-top:5px;">${item.ato.replace(/\\n/g, '<br>')}</div>`;
+  }
+  document.getElementById('espelho-oco-conteudo').innerHTML = html;
+
+  var btnPdf = document.getElementById('btn-espelho-pdf');
+  if(item.pdf && item.pdf.startsWith("http")) {
+      btnPdf.href = item.pdf;
+      btnPdf.style.display = 'block';
+  } else {
+      btnPdf.style.display = 'none';
+  }
+
+  var btnDel = document.getElementById('btn-espelho-excluir');
+  btnDel.onclick = function() {
+      document.getElementById('modal-espelho-ocorrencia').style.display = 'none';
+      deletarOcorrenciaGeral(tipo, item.id); // AGORA EXCLUI PELO ID
+  };
+
+  document.getElementById('modal-espelho-ocorrencia').style.display = 'flex';
+}
+
+function abrirModalNovaOcorrenciaGeral(tipo) {
+  document.getElementById('oco-tipo-geral').value = tipo;
+  document.getElementById('titulo-modal-ocorrencia-geral').innerText = "Registrar " + tipo;
+
+  // Mostra a área correta
+  document.getElementById('area-atestado-geral').style.display = tipo === 'ATESTADOS' ? 'block' : 'none';
+  document.getElementById('area-disciplinar-geral').style.display = tipo === 'ATESTADOS' ? 'none' : 'block';
+
+  document.getElementById('formOcorrenciaGeral').reset();
+
+  // Alimenta o Datalist com os funcionários do RH (Se 'funcionariosGlobal' existir)
+  var datalist = document.getElementById('lista-funcionarios-rh');
+  if(datalist && typeof funcionariosGlobal !== 'undefined') {
+    datalist.innerHTML = funcionariosGlobal.map(f => `<option value="${f.nome}">${f.cpf || ''}</option>`).join('');
+  }
+
+  document.getElementById('modal-ocorrencia-geral').style.display = 'flex';
+}
+// ================= CONTROLO INTELIGENTE DOS ATESTADOS E FALTAS =================
+function alternarModoAtestado() {
+  var modo = document.querySelector('input[name="tipoAusencia"]:checked').value;
+  document.getElementById('modo-atestado-medico').style.display = modo === 'ATESTADO' ? 'block' : 'none';
+  document.getElementById('modo-falta-injustificada').style.display = modo === 'FALTA' ? 'block' : 'none';
+}
+
+function calcularDiasFalta() {
+  var inicio = document.getElementById('oco-data-afastamento').value;
+  var fim = document.getElementById('oco-data-retorno-afastamento').value;
+  if(inicio && fim) {
+      var d1 = new Date(inicio);
+      var d2 = new Date(fim);
+      var diffMs = d2 - d1;
+      var diffDias = Math.round(diffMs / 86400000);
+      document.getElementById('oco-dias-falta').value = diffDias >= 0 ? diffDias + " Dias" : "Data Inválida";
+  }
+}
+// ================= CÁLCULO AUTOMÁTICO DO RETORNO DE ATESTADO =================
+function calcularDataRetornoAtestado() {
+  var dataInput = document.getElementById('oco-data-atestado').value;
+  var diasInput = document.getElementById('oco-dias-atestado').value;
+  var dataRetornoInput = document.getElementById('oco-data-retorno-atestado');
+
+  if (dataInput && diasInput) {
+    // Separa a data para evitar problemas com fuso horário no navegador
+    var partesData = dataInput.split('-');
+    // Cria o objeto data (Ano, Mês base 0, Dia)
+    var dataCalculada = new Date(partesData[0], partesData[1] - 1, partesData[2]);
+    
+    // Adiciona a quantidade de dias do atestado
+    var dias = parseInt(diasInput, 10);
+    if (!isNaN(dias)) {
+      dataCalculada.setDate(dataCalculada.getDate() + dias);
+      
+      // Formata de volta para YYYY-MM-DD para preencher o input type="date"
+      var ano = dataCalculada.getFullYear();
+      var mes = String(dataCalculada.getMonth() + 1).padStart(2, '0');
+      var dia = String(dataCalculada.getDate()).padStart(2, '0');
+      
+      dataRetornoInput.value = ano + '-' + mes + '-' + dia;
+    }
+  } else {
+    // Limpa o campo se o utilizador apagar a data ou os dias
+    dataRetornoInput.value = '';
+  }
+}
+// ================= ENVIO COM CONVERSOR BASE64 =================
+async function enviarFormularioOcorrenciaGeral(e) {
+  e.preventDefault();
+  var tipo = document.getElementById('oco-tipo-geral').value;
+  var nomeDigitado = document.getElementById('oco-nome-func-input').value.trim();
+
+  var cpfFunc = "";
+  if(typeof funcionariosGlobal !== 'undefined') {
+     var f = funcionariosGlobal.find(x => x.nome.toUpperCase() === nomeDigitado.toUpperCase());
+     if(f) cpfFunc = f.cpf || "";
+  }
+
+  // Se tiver um ficheiro (Atestado), converte para Base64
+  var base64Data = "", mimeType = "", fileName = "";
+  var inputFicheiro = document.getElementById('oco-arquivo-atestado');
+  if(inputFicheiro && inputFicheiro.files.length > 0) {
+      var file = inputFicheiro.files[0];
+      base64Data = await new Promise((resolve) => {
+        let reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+      });
+      mimeType = file.type;
+      fileName = file.name;
+  }
+
+  var dados = {
+    funcionario: nomeDigitado,
+    cpf: cpfFunc,
+    motivo: document.getElementById('oco-motivo') ? document.getElementById('oco-motivo').value : "",
+    dataAtestado: document.getElementById('oco-data-atestado') ? document.getElementById('oco-data-atestado').value : "",
+    diasAtestado: document.getElementById('oco-dias-atestado') ? document.getElementById('oco-dias-atestado').value : "",
+    dataRetornoAtestado: document.getElementById('oco-data-retorno-atestado') ? document.getElementById('oco-data-retorno-atestado').value : "",
+    dataAfastamento: document.getElementById('oco-data-afastamento') ? document.getElementById('oco-data-afastamento').value : "",
+    dataRetornoAfastamento: document.getElementById('oco-data-retorno-afastamento') ? document.getElementById('oco-data-retorno-afastamento').value : "",
+    diasFalta: document.getElementById('oco-dias-falta') ? document.getElementById('oco-dias-falta').value : "",
+    motivoLegal: document.getElementById('oco-motivo-legal') ? document.getElementById('oco-motivo-legal').value : "",
+    ato: document.getElementById('oco-ato') ? document.getElementById('oco-ato').value : "",
+    aplicadaPor: document.getElementById('oco-aplicada-por') ? document.getElementById('oco-aplicada-por').value : "",
+    arquivoBase64: base64Data,
+    arquivoMimeType: mimeType,
+    arquivoNome: fileName
+  };
+
+  var btn = document.getElementById('btn-salvar-oco-geral');
+  var txtOriginal = btn.innerText;
+  btn.innerText = "⏳ A Salvar na Nuvem..."; btn.disabled = true;
+
+  google.script.run.withSuccessHandler(function(res) {
+    alert(res.mensagem);
+    if(res.sucesso) {
+      document.getElementById('modal-ocorrencia-geral').style.display = 'none';
+      carregarTabelaOcorrenciasGeral(tipo);
+      if(res.urlPdf) window.open(res.urlPdf, '_blank'); 
+    }
+    btn.innerText = txtOriginal; btn.disabled = false;
+  }).salvarOcorrenciaRHBackend(tipo, dados);
+}
+
+function deletarOcorrenciaGeral(tipo, idRegistro) {
+  if(!confirm("⚠️ Tem certeza que deseja excluir DEFINITIVAMENTE este documento? (" + idRegistro + ")")) return;
+  
+  // Dá um feedback visual na tabela que está a carregar
+  var tbody = document.getElementById(obterTbodyId(tipo));
+  if(tbody) tbody.innerHTML = "<tr><td colspan='5' class='vazio-msg'>⏳ A excluir registro no banco de dados...</td></tr>";
+
+  google.script.run.withSuccessHandler(function(res) {
+    alert(res.mensagem);
+    carregarTabelaOcorrenciasGeral(tipo); // Recarrega a tabela limpa
+  }).excluirOcorrenciaRHBackend(tipo, idRegistro);
+}
+// ================= ROBÔ ASSISTENTE DE REDAÇÃO DE RH =================
+// ================= ROBÔ ASSISTENTE DE REDAÇÃO DE RH (VERSÃO TURBINADA) =================
+function melhorarRelatoComIA(event) {
+  var btn = event.currentTarget;
+  var txtOriginal = btn.innerHTML;
+  
+  var campoAto = document.getElementById('oco-ato');
+  var textoBase = campoAto.value.trim();
+
+  if (textoBase.length < 4) {
+    alert("Escreva pelo menos algumas palavras sobre o que aconteceu (ex: 'estava no celular') para o Robô trabalhar.");
+    return;
+  }
+
+  // Animação de "Processando"
+  btn.innerHTML = "⏳ A analisar...";
+  btn.disabled = true;
+
+  // Simulamos um processamento de IA (1.5 segundos)
+  setTimeout(function() {
+    var tLower = textoBase.toLowerCase();
+    var textoFormal = "";
+
+    // ================= PADRÕES COMPORTAMENTAIS (HUMANIZADOS E CLAROS) =================
+
+    // 1. USO DE CELULAR E DISTRAÇÕES
+    if (tLower.includes("celular") || tLower.includes("telefone") || tLower.includes("smartphone") || tLower.includes("whatsapp") || tLower.includes("jogando") || tLower.includes("rede social")) {
+       textoFormal = "O colaborador utilizou o telemóvel/celular para fins pessoais durante o horário de trabalho, o que acabou por desviar o foco das suas atividades. Essa atitude compromete a atenção, a segurança no local de trabalho e o rendimento da equipa.";
+    }
+    // 2. DORMIR NO SERVIÇO
+    else if (tLower.includes("dormindo") || tLower.includes("dormiu") || tLower.includes("cochilando") || tLower.includes("cochilo") || tLower.includes("sono")) {
+       textoFormal = "O colaborador foi encontrado a dormir/camilhar durante o horário de trabalho. Este comportamento demonstra falta de comprometimento com as responsabilidades do cargo e afeta negativamente a rotina e a confiança de toda a equipa.";
+    }
+    // 3. FALTA DE UNIFORME OU EPI
+    else if (tLower.includes("epi") || tLower.includes("uniforme") || tLower.includes("farda") || tLower.includes("bota") || tLower.includes("capacete") || tLower.includes("sem camisa") || tLower.includes("despadronizado")) {
+       textoFormal = "O colaborador atuou sem o uniforme completo ou sem o uso correto dos Equipamentos de Proteção Individual (EPIs). O uso destes itens é essencial e obrigatório para garantir a sua própria segurança e o cumprimento das normas de saúde da empresa.";
+    }
+    // 4. INFRAÇÕES DE TRÂNSITO E CONDUÇÃO (FROTA)
+    else if (tLower.includes("multa") || tLower.includes("velocidade") || tLower.includes("correndo") || tLower.includes("sinal") || tLower.includes("imprudente") || tLower.includes("barbeiragem") || tLower.includes("perigosa")) {
+       textoFormal = "O colaborador conduziu o veículo da frota de forma imprudente, não respeitando as leis de trânsito ou as regras de direção defensiva. Esta atitude coloca em risco a sua própria vida, a de terceiros na via e o patrimônio da empresa.";
+    }
+    // 5. ABANDONO DE POSTO / SAÍDA ANTECIPADA
+    else if (tLower.includes("saiu mais cedo") || tLower.includes("foi embora") || tLower.includes("sumiu") || tLower.includes("abandonou") || tLower.includes("deixou o posto")) {
+       textoFormal = "O colaborador ausentou-se do posto de trabalho antes do fim do expediente sem comunicar ou obter autorização da sua chefia direta. Sair sem aviso prévio prejudica o andamento do serviço e quebra a relação de confiança mútua.";
+    }
+    // 6. FOFOCAS E MAU AMBIENTE
+    else if (tLower.includes("fofoca") || tLower.includes("boato") || tLower.includes("intriga") || tLower.includes("falando mal") || tLower.includes("mentira")) {
+       textoFormal = "O colaborador envolveu-se em comentários inadequados, boatos ou fofocas, atitude que não condiz com os nossos valores. Este tipo de comportamento prejudica fortemente o clima de trabalho, o respeito e a harmonia entre os colegas.";
+    }
+    // 7. FUMAR EM LOCAL PROIBIDO
+    else if (tLower.includes("fuman") || tLower.includes("cigarro") || tLower.includes("vape") || tLower.includes("fumou") || tLower.includes("pod")) {
+       textoFormal = "O colaborador fumou numa área não permitida, desrespeitando as regras internas da empresa. É fundamental respeitar as sinalizações e utilizar apenas os espaços adequados para garantir o bem-estar e a segurança de todos no ambiente de trabalho.";
+    }
+    // 8. EMBRIAGUEZ OU DROGAS
+    else if (tLower.includes("bebado") || tLower.includes("bêbado") || tLower.includes("alcool") || tLower.includes("álcool") || tLower.includes("embriagad") || tLower.includes("bebida") || tLower.includes("droga")) {
+       textoFormal = "O colaborador apresentou-se ao trabalho demonstrando sinais de embriaguez ou alteração de consciência. Esta condição é inaceitável, pois coloca em sério risco a sua própria integridade física, a dos colegas e o andamento seguro da operação.";
+    }
+    // 9. FURTO / IMPROBIDADE / DESVIO
+    else if (tLower.includes("roubo") || tLower.includes("furto") || tLower.includes("desviou") || tLower.includes("pegou sem") || tLower.includes("sumiu com")) {
+       textoFormal = "O colaborador esteve envolvido numa situação de apropriação indevida ou desvio de bens. Esta atitude fere de forma absoluta os nossos princípios éticos, quebrando completamente a confiança fundamental para a manutenção da relação de trabalho.";
+    }
+    // 10. ATRASOS
+    else if (tLower.includes("atraso") || tLower.includes("atrasad") || tLower.includes("tarde") || tLower.includes("perdeu a hora")) {
+       textoFormal = "O colaborador chegou atrasado ao turno sem apresentar uma justificação válida. A pontualidade é essencial, e os atrasos não comunicados sobrecarregam os colegas presentes e atrapalham o planeamento da operação.";
+    } 
+    // 11. FALTAS INJUSTIFICADAS
+    else if (tLower.includes("falta") || tLower.includes("faltou") || tLower.includes("não veio") || tLower.includes("ausent")) {
+       textoFormal = "O colaborador faltou ao trabalho sem apresentar aviso prévio, atestado médico ou qualquer justificativa legal válida. A ausência não programada desorganiza a escala da equipa e impacta diretamente a entrega dos nossos serviços.";
+    } 
+    // 12. DANOS AO PATRIMÔNIO
+    else if (tLower.includes("acidente") || tLower.includes("bateu") || tLower.includes("quebro") || tLower.includes("dano") || tLower.includes("estragou")) {
+       textoFormal = "O colaborador esteve envolvido num incidente que causou danos a veículos ou equipamentos da empresa, devido a desatenção ou falta dos devidos cuidados. O zelo pelo nosso patrimônio é responsabilidade de todos e vital para o trabalho.";
+    } 
+    // 13. BRIGAS, PALAVRÕES E DESRESPEITO
+    else if (tLower.includes("briga") || tLower.includes("xing") || tLower.includes("discut") || tLower.includes("respeito") || tLower.includes("palavrão") || tLower.includes("gritou") || tLower.includes("ofend")) {
+       textoFormal = "O colaborador agiu de forma desrespeitosa, utilizando linguagem inadequada, ofensas ou envolvendo-se em discussões agressivas. A empresa valoriza o respeito e a cordialidade, e atitudes que gerem conflitos não são toleradas.";
+    } 
+    // 14. INSUBORDINAÇÃO E DESOBEDIÊNCIA
+    else if (tLower.includes("ordem") || tLower.includes("não quis") || tLower.includes("recusou") || tLower.includes("desobedeceu") || tLower.includes("negou")) {
+       textoFormal = "O colaborador recusou-se a seguir as orientações ou diretrizes estipuladas pela sua liderança direta. O alinhamento com a gestão é fundamental para o sucesso das atividades, e a falta de colaboração afeta toda a rotina da equipa.";
+    }
+    // 15. FALLBACK: FORMATAÇÃO GENÉRICA
+    else {
+       textoFormal = "O colaborador apresentou a seguinte conduta: '" + textoBase + "'. Esta atitude vai contra as orientações de convivência e as regras da empresa, impactando negativamente o ambiente de trabalho e a harmonia da equipa.";
+    }
+
+    // Injeta o texto profissional e devolve o botão ao estado normal
+    campoAto.value = textoFormal;
+    btn.innerHTML = "✨ Texto Melhorado!";
+    btn.style.background = "#dcfce7";
+    btn.style.color = "#166534";
+    
+    // Retorna o botão ao estado azul após 3 segundos
+    setTimeout(() => { 
+      btn.innerHTML = txtOriginal; 
+      btn.disabled = false; 
+      btn.style.background = "#eff6ff";
+      btn.style.color = "#2563eb";
+    }, 3000);
+    
+  }, 1500); 
+}
+// ================= SINCRONIZAÇÃO AUTOMÁTICA (AUTO-LOAD) =================
+document.addEventListener("DOMContentLoaded", function() {
+  // Aguarda 1 segundo após o sistema abrir para não travar a tela principal
+  setTimeout(function() {
+    if (typeof carregarTabelaOcorrenciasGeral === 'function') {
+       console.log("A iniciar sincronização automática de Atestados e Disciplinas...");
+       carregarTabelaOcorrenciasGeral('ATESTADOS');
+       carregarTabelaOcorrenciasGeral('ADVERTÊNCIA');
+       carregarTabelaOcorrenciasGeral('SUSPENSÃO');
+    }
+  }, 1000);
+});
+// ================= CONTROLO DE MENUS RETRÁTEIS (ACORDEÃO) =================
+function toggleSubMenu(submenuId, setaId) {
+  var submenu = document.getElementById(submenuId);
+  var seta = document.getElementById(setaId);
+  
+  if (!submenu) return;
+
+  if (submenu.style.display === "none" || submenu.style.display === "") {
+    // Abre o menu
+    submenu.style.display = "flex";
+    if (seta) seta.classList.add("aberto");
+  } else {
+    // Fecha o menu
+    submenu.style.display = "none";
+    if (seta) seta.classList.remove("aberto");
+  }
+}
+</script>

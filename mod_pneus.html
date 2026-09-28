@@ -1,0 +1,283 @@
+<style>
+  .roda-slot { width: 45px; height: 75px; background: #ffffff; border: 2px dashed #94a3b8; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: #94a3b8; cursor: pointer; transition: all 0.2s; z-index: 2; position: relative; overflow: hidden; }
+  .roda-slot:hover { border-color: #3b82f6; background: #eff6ff; }
+  .roda-slot.ocupada { background: #1e293b; border: 2px solid #000; color: #f8fafc; border-radius: 8px; flex-direction: column; line-height: 1.2; box-shadow: inset 0 0 10px rgba(0,0,0,0.8); }
+  .roda-slot.ocupada::before { content: '🛞'; font-size: 18px; margin-bottom: 4px; }
+  .pneu-estoque-card { background: white; border: 1px solid #e2e8f0; padding: 10px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s; }
+  .pneu-estoque-card:hover { border-color: #10b981; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.1); }
+  .pneu-estoque-card.selecionado { background: #10b981; color: white; border-color: #059669; }
+</style>
+
+<div id="aba-cadastro-pneu" class="aba-tela" style="display:none;">
+  <h1 class="titulo-tela">🛞 Controle e Cadastro de Pneus da Frota</h1>
+  <button onclick="auditarRecalcularTodosKmPneus(this)" style="background:#4f46e5; color:white; border:none; padding:8px 15px; border-radius:6px; font-weight:bold; font-size:12px; cursor:pointer; margin-bottom: 15px;">🤖 Auditoria Automática de KM</button>
+  <div style="max-width: 1200px;">
+    
+    <div class="header-tabela-geral">
+      <div class="barra-busca-container">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" id="input-busca-pneus" class="barra-busca" placeholder="Buscar por Nº de Fogo, Marca, Tamanho, Status ou Caminhão..." onkeyup="manipularBuscaPneus()">
+      </div>
+      <button class="btn-salvar" style="width: auto; padding: 13px 20px; font-size: 14px; background:#111827;" onclick="abrirModalNovoPneu()">➕ Cadastrar Novo Pneu</button>
+    </div>
+
+    <div class="table-wrapper">
+      <table class="tabela-dados" style="font-size: 11px;">
+        <thead>
+          <th>ID ÚNICO</th><th>DATA CADASTRO</th><th>Nº FOGO</th><th>MARCA/MODELO</th><th>TAMANHO</th><th>VALOR</th><th>SITUATION</th><th>STATUS ATUAL</th><th>LOCALIZADO EM</th><th>KM RODADO</th><th>CPK ATUAL</th><th style="text-align:center;">AÇÕES</th>
+        </thead>
+        <tbody id="tbody-cadastro-pneu">
+          <tr><td colspan="11" class="vazio-msg">A sincronizar estoque de pneus...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div id="aba-aplicar-pneus" class="aba-tela" style="display:none;">
+  <h1 class="titulo-tela">🔄 Movimentação e Aplicação de Pneus</h1>
+  
+  <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; max-width: 1200px;">
+    
+    <div class="admin-card" style="flex: 1; min-width: 300px;">
+      <h3 style="color:#b45309; border-bottom: 2px solid #fef3c7;">1. Selecione o Veículo</h3>
+      <div class="input-group">
+        <select id="mov-veiculo-select" onchange="carregarChassiVeiculo(this.value)" style="font-weight: bold; background: #f8fafc;">
+          <option value="" disabled selected>Escolha um caminhão da frota...</option>
+        </select>
+      </div>
+
+      <div id="painel-estoque-pneus" style="display: none; margin-top: 25px;">
+        <h3 style="color:#059669; border-bottom: 2px solid #dcfce7;">2. Pneus em Estoque</h3>
+        <p style="font-size: 11px; color:#64748b; margin-bottom:10px;">Clique num pneu abaixo e depois clique numa posição vazia no chassi do caminhão.</p>
+        
+        <input type="text" id="busca-pneu-estoque" placeholder="Buscar Fogo ou Tamanho..." onkeyup="filtrarPneusEstoquePainel()" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px; margin-bottom: 10px;">
+        
+        <div id="lista-pneus-disponiveis" style="max-height: 350px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-card" id="painel-chassi-caminhao" style="flex: 2; min-width: 400px; display: none; background: #f1f5f9; text-align: center; position: relative;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #cbd5e1; padding-bottom:10px; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+        <h3 style="color:#1e293b; margin:0;">Caminhão: <span id="lbl-chassi-veiculo" style="color:#1e3a8a; font-weight:800;"></span></h3>
+        
+        <div style="width: 130px; height: 45px; background: white; border: 2px solid #000; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif; position: relative; overflow: hidden;">
+          <div style="width: 100%; height: 12px; background: #0033a0; display: flex; align-items: center; justify-content: space-between; padding: 0 5px; box-sizing: border-box;">
+            <span style="color: white; font-size: 7px; font-weight: bold; transform: scale(0.8);">BRASIL</span>
+            <span style="color: white; font-size: 6px; font-weight: bold;">🇧🇷</span>
+          </div>
+          <input type="text" id="lbl-placa-chassi-automovel" readonly value="---0000" style="width: 100%; border: none; background: transparent; text-align: center; font-size: 18px; font-weight: 900; color: #000; letter-spacing: 1px; outline: none; padding: 0; margin-top: 2px; font-family: 'Courier New', monospace;">
+        </div>
+
+        <button class="btn-salvar" onclick="abrirHistoricoPneusVeiculo()" style="width:auto; padding:8px 15px; font-size:12px; background:#b45309; margin:0;">📋 Ver Histórico da Frota</button>
+      </div>
+      
+      <div id="ferramenta-ativa-box" style="display:none; background:#1e3a8a; color:white; padding:8px; border-radius:6px; font-size:12px; font-weight:bold; margin-bottom:15px;">
+        🛞 Pneu Selecionado: <span id="lbl-pneu-selecionado" style="color:#fcd34d;"></span><br>
+        <span style="font-size:10px; font-weight:normal;">Clique numa posição vazia do chassi para o instalar.</span>
+      </div>
+
+      <div style="display: inline-block; position: relative; padding: 20px; background: #e2e8f0; border-radius: 12px; border: 2px solid #cbd5e1;">
+        
+        <div style="display: flex; justify-content: space-between; width: 250px; margin-bottom: 60px; position: relative;">
+          <div style="position:absolute; top:50%; left:20px; right:20px; height:8px; background:#94a3b8; z-index:1;"></div>
+          <div class="roda-slot" id="slot-DE" onclick="clicarRodaChassi('DIANTEIRO ESQUERDO', 'slot-DE')" title="Dianteiro Esquerdo">DE</div>
+          <div class="roda-slot" id="slot-DD" onclick="clicarRodaChassi('DIANTEIRO DIREITO', 'slot-DD')" title="Dianteiro Direito">DD</div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; width: 250px; margin-bottom: 40px; position: relative;">
+          <div style="position:absolute; top:50%; left:10px; right:10px; height:12px; background:#64748b; z-index:1;"></div>
+          <div style="display: flex; gap: 4px; z-index:2;">
+            <div class="roda-slot" id="slot-TEE" onclick="clicarRodaChassi('TRAÇÃO EXT ESQUERDA', 'slot-TEE')">TEE</div>
+            <div class="roda-slot" id="slot-TIE" onclick="clicarRodaChassi('TRAÇÃO INT ESQUERDA', 'slot-TIE')">TIE</div>
+          </div>
+          <div style="display: flex; gap: 4px; z-index:2;">
+            <div class="roda-slot" id="slot-TID" onclick="clicarRodaChassi('TRAÇÃO INT DIREITA', 'slot-TID')">TID</div>
+            <div class="roda-slot" id="slot-TED" onclick="clicarRodaChassi('TRAÇÃO EXT DIREITA', 'slot-TED')">TED</div>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; width: 250px; position: relative;">
+          <div style="position:absolute; top:50%; left:10px; right:10px; height:12px; background:#64748b; z-index:1;"></div>
+          <div style="display: flex; gap: 4px; z-index:2;">
+            <div class="roda-slot" id="slot-TKE" onclick="clicarRodaChassi('TRUCK EXT ESQUERDA', 'slot-TKE')">TKE</div>
+            <div class="roda-slot" id="slot-TKI" onclick="clicarRodaChassi('TRUCK INT ESQUERDA', 'slot-TKI')">TKI</div>
+          </div>
+          <div style="display: flex; gap: 4px; z-index:2;">
+            <div class="roda-slot" id="slot-TKD" onclick="clicarRodaChassi('TRUCK INT DIREITA', 'slot-TKD')">TKD</div>
+            <div class="roda-slot" id="slot-TCE" onclick="clicarRodaChassi('TRUCK EXT DIREITA', 'slot-TCE')">TKD</div>
+          </div>
+        </div>
+
+        <div style="position:absolute; top:10px; bottom:10px; left:50%; width:16px; margin-left:-8px; background:#475569; z-index:0;"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-novo-pneu" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999;">
+  <div class="modal-box" style="max-width: 600px; width: 90%; background: white; border-radius: 12px; margin: auto; padding: 25px; position: relative;">
+    <div class="modal-header">
+      <h2>🛞 Cadastro Patrimonial de Pneu</h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-novo-pneu')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="formNovoPneu" onsubmit="enviarFormularioPneu(event)">
+        
+        <div style="background: #f8fafc; padding: 12px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #111827;">
+          <label style="font-size: 11px; font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">🎯 SUGESTÃO DE LOGÍSTICA DE FOGO (Automático):</label>
+          <span id="txt-sugestao-fogo" style="font-size: 13px; font-weight: 800; color: #111827;">Calculando...</span>
+        </div>
+
+        <div class="form-row">
+          <div class="input-group">
+            <label>Número de Fogo (Único) *</label>
+            <input type="text" id="pn-fogo" required placeholder="Ex: 012526" style="font-weight: bold; letter-spacing: 1px;">
+          </div>
+          <div class="input-group">
+            <label>Código DOT (Fábrica) *</label>
+            <input type="text" id="pn-dot" required placeholder="Ex: 4225">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="input-group">
+            <label>Marca / Fabricante *</label>
+            <input type="text" id="pn-marca" required placeholder="Ex: Michelin, Goodyear...">
+          </div>
+          <div class="input-group">
+            <label>Modelo do Pneu *</label>
+            <input type="text" id="pn-modelo" required placeholder="Ex: X Multi Z">
+          </div>
+        </div>
+
+        <div class="form-row-3">
+          <div class="input-group">
+            <label>Tamanho do Pneu *</label>
+            <input type="text" id="pn-tamanho" list="lista-tamanhos-pneu" required placeholder="Escolha ou digite...">
+            <datalist id="lista-tamanhos-pneu">
+              <option value="275/80R 22,5">
+              <option value="295/80R 22,5">
+              <option value="12R 22,5">
+            </datalist>
+          </div>
+          <div class="input-group">
+            <label>Situação Inicial *</label>
+            <select id="pn-situacao" required>
+              <option value="NOVO" selected>Novo</option>
+              <option value="USADO">Usado</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label>Sulco Inicial (mm) *</label>
+            <input type="number" id="pn-sulco" step="0.1" required placeholder="Ex: 14.5">
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label>Valor de Aquisição (R$) *</label>
+          <input type="number" id="pn-valor" step="0.01" required placeholder="Ex: 2450.00">
+        </div>
+
+        <button type="submit" class="btn-salvar" id="btn-submit-pneu" style="margin-top: 15px; width: 100%; background: #111827;">
+          <span class="btn-text">Efetivar Entrada no Estoque</span>
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-editar-pneu" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999;">
+  <div class="modal-box" style="max-width: 600px; width: 90%; background: white; border-radius: 12px; margin: auto; padding: 25px; position: relative;">
+    <div class="modal-header">
+      <h2>✏️ Editar Registro de Pneu</h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-editar-pneu')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="formEditarPneu" onsubmit="enviarEdicaoPneu(event)">
+        <input type="hidden" id="pn-edit-linha">
+        
+        <div class="form-row">
+          <div class="input-group"><label>Número de Fogo *</label><input type="text" id="pn-edit-fogo" required style="font-weight:bold;"></div>
+          <div class="input-group"><label>Código DOT *</label><input type="text" id="pn-edit-dot" required></div>
+        </div>
+        <div class="form-row">
+          <div class="input-group"><label>Marca / Fabricante *</label><input type="text" id="pn-edit-marca" required></div>
+          <div class="input-group"><label>Modelo *</label><input type="text" id="pn-edit-modelo" required></div>
+        </div>
+        <div class="form-row-3">
+          <div class="input-group"><label>Tamanho *</label><input type="text" id="pn-edit-tamanho" required></div>
+          <div class="input-group">
+            <label>Situação *</label>
+            <select id="pn-edit-situacao"><option value="NOVO">Novo</option><option value="USADO">Usado</option></select>
+          </div>
+          <div class="input-group"><label>Sulco Atual (mm) *</label><input type="number" id="pn-edit-sulco" step="0.1" required></div>
+        </div>
+        <div class="form-row-3">
+          <div class="input-group">
+            <label>Status Atual *</label>
+            <select id="pn-edit-status"><option value="EM ESTOQUE">Em Estoque</option><option value="INSTALADO">Instalado</option><option value="EM RECAPAGEM">Em Recapagem</option><option value="SUCATEADO">Sucateado</option></select>
+          </div>
+          <div class="input-group">
+            <label>Veículo Instalado</label>
+            <select id="pn-edit-veiculo">
+              <option value="-">📦 Almoxarifado / Nenhum</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label>Posição de Montagem</label>
+            <select id="pn-edit-posicao">
+              <option value="-">Nenhuma</option>
+              <option value="DIANTEIRO ESQUERDO">Dianteiro Esquerdo</option>
+              <option value="DIANTEIRO DIREITO">Dianteiro Direito</option>
+              <option value="TRAÇÃO EXT ESQUERDA">Tração Ext Esquerda (TEE)</option>
+              <option value="TRAÇÃO INT ESQUERDA">Tração Int Esquerda (TIE)</option>
+              <option value="TRAÇÃO INT DIREITA">Tração Int Direita (TID)</option>
+              <option value="TRAÇÃO EXT DIREITA">Tração Ext Direita (TED)</option>
+              <option value="TRUCK EXT ESQUERDA">Truck Ext Esquerda (TKE)</option>
+              <option value="TRUCK INT ESQUERDA">Truck Int Esquerda (TKI)</option>
+              <option value="TRUCK INT DIREITA">Truck Int Direita (TKD)</option>
+              <option value="TRUCK EXT DIREITA">Truck Ext Direita (TCE)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="input-group">
+            <label>Valor de Aquisição (R$) *</label>
+            <input type="number" id="pn-edit-valor" step="0.01" required>
+          </div>
+          <div class="input-group">
+            <label>KM Rodado (Correção Manual)</label>
+            <input type="number" id="pn-edit-km" step="1" title="Altere manualmente caso o histórico esteja zerado ou incorreto">
+          </div>
+        </div>
+        
+        <button type="submit" class="btn-salvar" style="margin-top: 15px; width: 100%; background: #1e3a8a;">Salvar Alterações</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-historico-pneus-veiculo" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999;">
+  <div class="modal-box" style="max-width: 850px; width: 95%; max-height: 85vh; overflow-y: auto; background: white; border-radius: 12px; margin: auto; padding: 25px;">
+    <div class="modal-header">
+      <h2>📋 Histórico de Movimentação de Pneus - <span id="lbl-hist-titulo-veiculo" style="color:#b45309;"></span></h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-historico-pneus-veiculo')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="table-wrapper" style="border: 1px solid #cbd5e1;">
+        <table class="tabela-dados" style="font-size: 12px;">
+          <thead>
+            <tr style="background:#f8fafc;">
+              <th>CÓDIGO</th><th>DATA/HORA</th><th>Nº FOGO</th><th>OPERAÇÃO</th><th>POSIÇÃO DE MONTAGEM</th><th>KM VEÍCULO</th><th>SULCO</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-hist-pneus-veiculo">
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>

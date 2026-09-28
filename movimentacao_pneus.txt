@@ -1,0 +1,234 @@
+// ================= MOTOR DE PNEUS COM MATEMÁTICA BLINDADA =================
+
+// ================= MOTOR DE MOVIMENTAÇÃO (COM PROTEÇÃO DE ZEROS) =================
+
+function registrarMovimentacaoPneu(dados) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var abaMov = ss.getSheetByName("MOV_PNEUS");
+    if (!abaMov) return { sucesso: false, mensagem: "Aba MOV_PNEUS não encontrada." };
+
+    var abaPneu = ss.getSheetByName("CADASTRO_PNEU_FROTA");
+    var dadosPneu = abaPneu.getDataRange().getValues();
+    var linhaAlvo = -1;
+    var colFogo=2, colStatus=9, colSulco=11, colVeiculo=12, colPosicao=13, colKmTotal=14, colCpk=15, colValor=6;
+
+    // Remove zeros à esquerda apenas para fazer a busca e achar o pneu correto
+    var fogoBusca = String(dados.fogo).trim().toUpperCase().replace(/^0+/, '');
+
+    for (var i = 1; i < dadosPneu.length; i++) {
+      var fogoCadastro = String(dadosPneu[i][colFogo]).trim().toUpperCase().replace(/^0+/, '');
+      if (fogoCadastro === fogoBusca) {
+        linhaAlvo = i + 1; break;
+      }
+    }
+    
+    if (linhaAlvo === -1) return { sucesso: false, mensagem: "Pneu não encontrado no cadastro." };
+
+    var strKmDigitado = String(dados.kmVeiculo || "0").replace(/\./g, '').replace(',', '.');
+    var kmAtualDigitado = parseFloat(strKmDigitado) || 0;
+    
+    var novoStatus = "EM ESTOQUE"; var veiculoAtual = "-"; var posicaoAtual = "-";
+    if (dados.acao === "INSTALAR") {
+      novoStatus = "INSTALADO"; veiculoAtual = dados.veiculo.toUpperCase(); posicaoAtual = dados.posicao.toUpperCase();
+    } else if (dados.acao === "RECAPE") { novoStatus = "EM RECAPAGEM"; } 
+      else if (dados.acao === "SUCATA") { novoStatus = "SUCATEADO"; }
+
+    // Atualiza Cadastro
+    abaPneu.getRange(linhaAlvo, colStatus + 1).setValue(novoStatus);
+    abaPneu.getRange(linhaAlvo, colVeiculo + 1).setValue(veiculoAtual);
+    abaPneu.getRange(linhaAlvo, colPosicao + 1).setValue(posicaoAtual);
+    if(dados.sulco) abaPneu.getRange(linhaAlvo, colSulco + 1).setValue(parseFloat(String(dados.sulco).replace(',', '.')) || 0);
+
+    var proximoId = abaMov.getLastRow();
+    var idFormatado = "MOV-" + ("00000" + proximoId).slice(-5);
+    var dataHora = Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), "dd/MM/yyyy HH:mm:ss");
+
+    // ⚠️ TRUQUE MÁGICO AQUI: O apóstrofo "'" força o Excel a não apagar o zero!
+    var fogoComApostrofo = "'" + dados.fogo.trim().toUpperCase();
+
+    abaMov.appendRow([
+      idFormatado, dataHora, fogoComApostrofo, dados.acao.toUpperCase(),
+      dados.veiculo ? dados.veiculo.toUpperCase() : "-", dados.posicao ? dados.posicao.toUpperCase() : "-",
+      kmAtualDigitado, dados.sulco || "-", dados.responsavel || "SISTEMA"
+    ]);
+
+    return { sucesso: true, mensagem: "✅ Pneu movimentado com sucesso! Zeros à esquerda preservados." };
+  } catch (e) { return { sucesso: false, mensagem: "Erro: " + e.toString() }; }
+}
+
+// ATUALIZAÇÃO: Agora permite editar e forçar o KM Rodado manualmente na planilha
+function atualizarDadosCadastroPneu(linha, dados) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var aba = ss.getSheetByName("CADASTRO_PNEU_FROTA");
+    
+    aba.getRange(linha, 3).setValue(dados.numeroFogo.toUpperCase().trim());
+    aba.getRange(linha, 4).setValue(dados.marca.toUpperCase().trim());
+    aba.getRange(linha, 5).setValue(dados.modelo.toUpperCase().trim());
+    aba.getRange(linha, 6).setValue(dados.tamanho.toUpperCase().trim());
+    aba.getRange(linha, 8).setValue(dados.dot.toUpperCase().trim());
+    aba.getRange(linha, 9).setValue(dados.situacao.toUpperCase());
+    aba.getRange(linha, 10).setValue(dados.status.toUpperCase());
+    aba.getRange(linha, 13).setValue(dados.veiculo.toUpperCase().trim());
+    aba.getRange(linha, 14).setValue(dados.posicao.toUpperCase().trim());
+    aba.getRange(linha, 12).setValue(parseFloat(String(dados.sulco).replace(',', '.')) || 0);
+    
+    var valorCompra = parseFloat(String(dados.valor).replace(/\./g, '').replace(',', '.')) || 0;
+    aba.getRange(linha, 7).setValue(valorCompra);
+    
+    // Força a injeção do KM Manual que você vai digitar na tela
+    var kmManual = parseFloat(String(dados.kmRodado).replace(/\./g, '').replace(',', '.')) || 0;
+    aba.getRange(linha, 15).setValue(kmManual);
+    if (kmManual > 0) {
+      aba.getRange(linha, 16).setValue(valorCompra / kmManual);
+    } else {
+      aba.getRange(linha, 16).setValue(0);
+    }
+
+    return { sucesso: true, mensagem: "✏️ Dados e KM do pneu atualizados com sucesso!" };
+  } catch(e) { return { sucesso: false, mensagem: e.toString() }; }
+}
+
+// Função para listar o histórico de movimentações filtrado por veículo
+// ================= CORREÇÕES DE BUSCA E HISTÓRICO =================
+
+function listarHistoricoMovimentacoesVeiculo(prefixo) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var aba = ss.getSheetByName("MOV_PNEUS");
+    if (!aba) return [];
+    
+    var dados = aba.getDataRange().getValues();
+    var filtrados = [];
+    
+    for (var i = dados.length - 1; i > 0; i--) {
+      if (String(dados[i][4]).trim().toUpperCase() === prefixo.trim().toUpperCase()) {
+        
+        // CORREÇÃO CRÍTICA: Converte a Data do Excel para Texto para não travar o envio para a tela!
+        var dataFormatada = dados[i][1];
+        if (dataFormatada instanceof Date) {
+           var d = dataFormatada;
+           dataFormatada = ("0"+d.getDate()).slice(-2) + "/" + ("0"+(d.getMonth()+1)).slice(-2) + "/" + d.getFullYear() + " " + ("0"+d.getHours()).slice(-2) + ":" + ("0"+d.getMinutes()).slice(-2);
+        }
+
+        filtrados.push({
+          id: dados[i][0], data: dataFormatada, fogo: dados[i][2],
+          acao: dados[i][3], posicao: dados[i][5], km: dados[i][6], sulco: dados[i][7]
+        });
+      }
+    }
+    return filtrados;
+  } catch(e) { return []; }
+}
+
+function buscarPainelPneusVeiculo(prefixo) {
+  try {
+    var abaPneu = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("CADASTRO_PNEU_FROTA");
+    if (!abaPneu) return { sucesso: false, instalados: [], disponiveis: [] };
+    
+    var dados = abaPneu.getDataRange().getValues();
+    var instalados = [];
+    var disponiveis = [];
+    var prefAjustado = prefixo ? String(prefixo).trim().toUpperCase() : "";
+
+    for (var i = 1; i < dados.length; i++) {
+      var status = String(dados[i][9] || "").trim().toUpperCase();
+      var pneuObj = {
+        fogo: dados[i][2], marca: dados[i][3], tamanho: dados[i][5], 
+        status: status, posicao: dados[i][13], vida: dados[i][10]
+      };
+
+      if (status === "INSTALADO" && prefAjustado !== "" && String(dados[i][12]).trim().toUpperCase() === prefAjustado) {
+        instalados.push(pneuObj);
+      } else if (status === "EM ESTOQUE" || status === "NOVO") {
+        disponiveis.push(pneuObj);
+      }
+    }
+    return { sucesso: true, instalados: instalados, disponiveis: disponiveis };
+  } catch (e) { return { sucesso: false, instalados: [], disponiveis: [] }; }
+}
+
+// ================= ROBÔ AUDITOR: RECALCULAR TODOS OS KMS AUTOMATICAMENTE =================
+
+// ================= ROBÔ AUDITOR: IMUNE A ZEROS À ESQUERDA =================
+
+function auditarRecalcularTodosKmBackend() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var abaPneu = ss.getSheetByName("CADASTRO_PNEU_FROTA");
+    var abaMov = ss.getSheetByName("MOV_PNEUS");
+
+    if (!abaPneu || !abaMov) return {sucesso: false, mensagem: "Abas de base de dados não encontradas."};
+
+    var dadosMov = abaMov.getDataRange().getValues();
+    var historicoPneus = {};
+    var totalPneusNoHistorico = 0;
+
+    for (var m = 1; m < dadosMov.length; m++) {
+      // ⚠️ RAIO-X: Remove qualquer quantidade de zeros no começo da palavra!
+      var fogo = String(dadosMov[m][2] || "").trim().toUpperCase().replace(/^0+/, '');
+      var acao = String(dadosMov[m][3] || "").trim().toUpperCase();
+      var strKm = String(dadosMov[m][6] || "0").replace(/\./g, '').replace(',', '.');
+      var kmDigitado = parseFloat(strKm) || 0;
+
+      if (fogo === "") continue;
+      
+      if (!historicoPneus[fogo]) {
+        historicoPneus[fogo] = { kmTotalAcumulado: 0, kmDeEntrada: 0, emUso: false, qtdRecapagens: 0 };
+        totalPneusNoHistorico++;
+      }
+
+      if (acao === "INSTALAR") {
+        historicoPneus[fogo].kmDeEntrada = kmDigitado;
+        historicoPneus[fogo].emUso = true;
+      } 
+      else if (acao !== "INSTALAR" && historicoPneus[fogo].emUso) {
+         var kmSaida = kmDigitado;
+         if (kmSaida >= historicoPneus[fogo].kmDeEntrada && historicoPneus[fogo].kmDeEntrada > 0) {
+            historicoPneus[fogo].kmTotalAcumulado += (kmSaida - historicoPneus[fogo].kmDeEntrada);
+         }
+         historicoPneus[fogo].emUso = false; 
+         historicoPneus[fogo].kmDeEntrada = 0; 
+      }
+
+      if (acao === "RECAPE") {
+         historicoPneus[fogo].qtdRecapagens += 1;
+      }
+    }
+
+    var dadosPneu = abaPneu.getDataRange().getValues();
+    var qtdAtualizados = 0;
+
+    for (var i = 1; i < dadosPneu.length; i++) {
+      // ⚠️ RAIO-X: Também remove os zeros do cadastro antes de comparar!
+      var fogoPneu = String(dadosPneu[i][2] || "").trim().toUpperCase().replace(/^0+/, '');
+      
+      if (historicoPneus[fogoPneu] !== undefined) {
+         var kmReal = historicoPneus[fogoPneu].kmTotalAcumulado;
+         var valorCompra = parseFloat(String(dadosPneu[i][6] || "0").replace(/\./g, '').replace(',', '.')) || 0;
+
+         abaPneu.getRange(i + 1, 15).setValue(kmReal); 
+         
+         if (kmReal > 0) {
+           abaPneu.getRange(i + 1, 16).setValue(valorCompra / kmReal);
+         } else {
+           abaPneu.getRange(i + 1, 16).setValue(0);
+         }
+         qtdAtualizados++;
+      }
+    }
+
+    var msg = "✅ Auditoria Concluída via Lógica de Entrada/Saída!\n\n" + 
+              "Pneus analisados no Histórico: " + totalPneusNoHistorico + "\n" +
+              "Pneus atualizados no Cadastro: " + qtdAtualizados + "\n\n";
+              
+    if (qtdAtualizados === 0 && totalPneusNoHistorico > 0) {
+      msg += "⚠️ ALERTA: Nenhum pneu atualizado! O Nº de Fogo no histórico está diferente do Nº de Fogo na aba de Cadastro.";
+    }
+
+    return { sucesso: true, mensagem: msg };
+  } catch (e) {
+    return { sucesso: false, mensagem: "Erro interno no robô: " + e.toString() };
+  }
+}

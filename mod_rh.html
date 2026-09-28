@@ -1,0 +1,419 @@
+<div id="aba-funcionarios" class="aba-tela">
+  <h1 class="titulo-tela">👥 Gestão de Funcionários</h1>
+  <div style="max-width: 1100px;">
+    
+    <div class="header-tabela-geral">
+      <div class="barra-busca-container">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" id="input-busca-func" class="barra-busca" placeholder="Buscar por Nome, Matrícula ou Função..." onkeyup="manipularBuscaFuncionario()">
+      </div>
+      
+      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <div class="visualizacao-control" style="display:flex; gap:8px;">
+          <button class="btn-view-toggle ativo" onclick="mudarVisualizacao('cards')" style="display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:6px; border:1px solid #3b82f6; background:#3b82f6; color:white; cursor:pointer; font-weight:600;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            Cards
+          </button>
+          <button class="btn-view-toggle" onclick="mudarVisualizacao('tabela')" style="display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:6px; border:1px solid #cbd5e1; background:white; color:#475569; cursor:pointer; font-weight:600;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+            Tabela
+          </button>
+        </div>
+        
+        <button class="btn-salvar" style="width: auto; padding: 13px 20px; font-size: 14px;" onclick="abrirModalNovoFuncionario()">➕ Novo Funcionário</button>
+      </div>
+    </div>
+
+    <div class="grid-funcionarios-cards" id="grid-lista-func">
+      <div class="vazio-msg" style="grid-column: 1 / -1;">A carregar funcionários...</div>
+    </div>
+
+    <div class="table-wrapper" id="tabela-lista-func" style="display: none;">
+      <table class="tabela-dados" id="tabela-func-principal">
+        <thead>
+          <tr>
+            <th onclick="ordenarTabelaFunc('matricula')" id="th-func-matricula">Matrícula <span class="sort-icon">⇅</span></th>
+            <th onclick="ordenarTabelaFunc('nome')" id="th-func-nome">Nome <span class="sort-icon">↑</span></th>
+            <th onclick="ordenarTabelaFunc('funcao')" id="th-func-funcao">Função <span class="sort-icon">⇅</span></th>
+            <th onclick="ordenarTabelaFunc('equipe')" id="th-func-equipe">Equipe <span class="sort-icon">⇅</span></th>
+            <th onclick="ordenarTabelaFunc('status')" id="th-func-status">Status <span class="sort-icon">⇅</span></th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-lista-func"></tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<div id="aba-escala-trabalho" class="aba-tela">
+  <h1 class="titulo-tela">📅 Escalas de Trabalho</h1>
+  <div style="max-width: 1100px;">
+    <div class="header-tabela-geral" style="background: #fff; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 25px;">
+      <div>
+        <p style="color:#475569; font-size:14px; margin-bottom: 5px; font-weight: 600;">Central de Distribuição de Escalas</p>
+        <p style="color:#64748b; font-size:12px; margin-bottom: 0;">Gere, visualize e imprima as folhas de assinatura da semana.</p>
+      </div>
+      <button class="btn-salvar" style="width: auto; padding: 10px 20px; font-size: 14px; background:#10b981;" onclick="abrirModalNovaEscala()">📅 Gerar Nova Escala</button>
+    </div>
+    <div class="grid-escalas" id="grid-lista-escalas">
+      <div class="vazio-msg" style="grid-column: 1 / -1;">A sincronizar escalas...</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-historico-func">
+  <div class="modal-box" style="max-width: 900px; height: 85vh;">
+    <div class="modal-header">
+      <h2>👤 <span id="hist-nome"></span> <span class="tag-cat" id="hist-status" style="margin-left:10px;"></span></h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-historico-func')">&times;</button>
+    </div>
+    <div class="modal-body" style="background:#f8fafc; padding: 20px;">
+      <div class="admin-card" style="padding: 20px; margin-bottom: 20px; display:flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 15px;">
+        <div style="flex:1; min-width: 250px;">
+          <p style="font-size:13px; color:#64748b; margin-bottom:5px;"><strong>Função:</strong> <span id="hist-funcao" style="color:#1e293b;"></span></p>
+          <p style="font-size:13px; color:#64748b; margin-bottom:5px;"><strong>Matrícula:</strong> <span id="hist-mat" style="color:#1e293b;"></span> &nbsp;|&nbsp; <strong>CPF:</strong> <span id="hist-cpf" style="color:#1e293b;"></span></p>
+          <p style="font-size:13px; color:#64748b; margin-bottom:8px;"><strong>Admissão:</strong> <span id="hist-adm" style="color:#1e293b;"></span></p>
+          
+          <div style="display:flex; align-items:flex-end; gap:10px; margin-top:10px; background:#f1f5f9; padding:10px; border-radius:6px; border:1px solid #e2e8f0; flex-wrap: wrap;">
+            <div>
+              <label style="font-size:11px; font-weight:600; color:#64748b; display:block; margin-bottom:3px;">Equipe:</label>
+              <input type="text" id="edit-equipe" style="padding:6px; font-size:12px; border:1px solid #cbd5e1; border-radius:4px; width:140px; outline:none; font-family:'Poppins', sans-serif;">
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:600; color:#64748b; display:block; margin-bottom:3px;">Status:</label>
+              <select id="edit-status" style="padding:6px; font-size:12px; border:1px solid #cbd5e1; border-radius:4px; outline:none; font-family:'Poppins', sans-serif;">
+                <option value="ATIVO">Ativo</option>
+                <option value="INATIVO">Inativo</option>
+                <option value="AFASTADO">Afastado</option>
+                <option value="FÉRIAS">Férias</option>
+              </select>
+            </div>
+            <div>
+              <button onclick="salvarEdicaoFuncionario(this)" class="btn-salvar btn-azul-claro" style="padding:6px 12px; font-size:12px; width:auto; margin:0;">💾 Atualizar</button>
+            </div>
+          </div>
+        </div>
+        
+        <div style="text-align:center; min-width: 150px; background: #fff; border: 1px solid #e2e8f0; padding: 10px; border-radius: 8px;">
+          <span style="font-size:11px; font-weight:600; color:#94a3b8; display:block; margin-bottom:5px;">ASSINATURA DO COLABORADOR</span>
+          <img id="hist-img-assinatura" src="" class="img-assinatura" onerror="this.style.display='none'">
+          <span id="hist-sem-assinatura" style="font-size:12px; color:#ef4444; display:none;">Não Cadastrada</span>
+          
+          <input type="file" id="input-nova-assinatura" accept="image/*" style="display:none;" onchange="uploadNovaAssinatura(this)">
+          <button type="button" class="btn-salvar" style="padding:6px 10px; font-size:11px; margin-top:5px; width:100%; background: #10b981;" onclick="abrirPainelAssinatura()">✍️ Desenhar Assinatura</button>
+          <button type="button" class="btn-salvar" style="padding:6px 10px; font-size:11px; margin-top:10px; width:100%; background: #3b82f6;" onclick="document.getElementById('input-nova-assinatura').click()">📝 Atualizar Assinatura</button>
+        </div>
+      </div>
+      
+      <div class="historico-section"><div class="historico-header">📅 Últimas Escalas <span class="tag-cat" id="hist-count-escala">0</span></div><div class="table-wrapper"><table class="mini-table" id="table-hist-escala"></table></div></div>
+      
+      <div class="historico-section">
+        <div class="historico-header">🩺 Atestados e Licenças</div>
+        <div class="table-wrapper"><table class="mini-table" id="table-hist-atestado"></table></div>
+      </div>
+      
+      <div class="historico-section" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+        <div>
+          <div class="historico-header" style="color:#b45309;">⚠️ Advertências</div>
+          <div class="table-wrapper"><table class="mini-table" id="table-hist-adv"></table></div>
+        </div>
+        <div>
+          <div class="historico-header" style="color:#991b1b;">🛑 Suspensões</div>
+          <div class="table-wrapper"><table class="mini-table" id="table-hist-susp"></table></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-novo-funcionario">
+  <div class="modal-box" style="max-width: 600px;">
+    <div class="modal-header"><h2>➕ Adicionar Funcionário</h2><button class="btn-fechar" onclick="fecharModal('modal-novo-funcionario')">&times;</button></div>
+    <div class="modal-body">
+      <form id="formFuncionario" onsubmit="enviarFormularioFuncionario(event)">
+        <div class="input-group"><label>Nome Completo *</label><input type="text" name="nome" required></div>
+        <div class="form-row"><div class="input-group"><label>CPF *</label><input type="text" name="cpf" required></div><div class="input-group"><label>Data de Admissão</label><input type="date" name="admissao"></div></div>
+        <div class="form-row-3"><div class="input-group"><label>Função *</label><input type="text" name="funcao" required></div><div class="input-group"><label>Matrícula</label><input type="text" name="matricula"></div><div class="input-group"><label>Equipe</label><input type="text" name="equipe"></div></div>
+        <div class="form-row"><div class="input-group"><label>Status</label><select name="status"><option value="ATIVO" selected>Ativo</option><option value="INATIVO">Inativo</option></select></div><div class="input-group"><label>Assinatura (Foto/PNG)</label><input type="file" name="fileAssinatura" accept="image/*"></div></div>
+        <button type="submit" class="btn-salvar" id="btn-submit-func" style="margin-top: 15px;"><span class="loader-spinner"></span><span class="btn-text">Salvar Funcionário</span></button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-criar-escala">
+  <div class="modal-box" style="max-width: 700px;">
+    <div class="modal-header"><h2>📅 Gerar Escala</h2><button class="btn-fechar" onclick="fecharModal('modal-criar-escala')">&times;</button></div>
+    <div class="modal-body">
+      <form id="formEscala" onsubmit="enviarFormularioEscala(event)">
+        <div class="form-row">
+          <div class="input-group"><label>Data da Escala *</label><input type="date" name="data" id="escala-data" required></div>
+          <div class="input-group">
+            <label>Tipo de Escala *</label>
+            <input type="text" name="tipoEscala" id="escala-tipo-input" list="lista-tipos-escala" required placeholder="Selecione ou digite um tipo personalizado..." style="width: 100%; padding: 12px 15px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; font-family: 'Poppins', sans-serif;">
+            <datalist id="lista-tipos-escala">
+              <option value="ESCALA DA MANUTENÇÃO - DOMINGO">
+              <option value="ESCALA DA MANUTENÇÃO - ALTERAÇÃO DE FOLGA">
+              <option value="ESCALA DA MANUTENÇÃO - DISPENSA COMO RECOMPENSA">
+              <option value="ESCALA DA MANUTENÇÃO - FOLGA COMPENSATÓRIA">
+              <option value="ESCALA DA MANUTENÇÃO - HORAS EXTRAS">
+            </datalist>
+          </div>
+        </div>
+        <div class="input-group"><label>Selecione os Funcionários (Marque para definir a folga individual) *</label><div class="lista-check-funcionarios" id="lista-checkbox-func"></div></div>
+        <button type="submit" class="btn-salvar" id="btn-submit-escala" style="margin-top: 20px; background:#10b981;"><span class="loader-spinner"></span><span class="btn-text">Salvar Escala e Gerar PDF</span></button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-escala-detalhes-editavel" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999;">
+  <div class="modal-box" style="max-width: 900px; width: 95%; max-height: 90vh; overflow-y: auto; background: white; border-radius: 12px; margin: auto; position: relative;">
+    <div class="modal-header">
+      <h2><i class="fa-solid fa-file-invoice"></i> Detalhes e Edição da Escala</h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-escala-detalhes-editavel')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+        <h3 style="font-size: 16px; margin: 0; color: #1e3a8a;" id="edicao-escala-tipo-visual"></h3>
+        <p style="font-size: 13px; margin: 5px 0 0 0; color: #64748b;"><strong>Data Referência:</strong> <span id="edicao-escala-data-visual"></span></p>
+        <p style="font-size: 11px; margin-top: 5px; color: #b91c1c; font-weight: 600;">* Digite o dia/mês/Ano (Ex: 25/06/2026) OU a palavra "PAGO" na coluna de Folga.</p>
+      </div>
+
+      <div class="table-wrapper" style="border: 1px solid #cbd5e1;">
+        <table class="tabela-dados table-edicao-folgas" style="font-size: 12px;">
+          <thead>
+            <tr>
+              <th style="width:10%;">Matrícula</th>
+              <th style="width:30%;">Funcionário</th>
+              <th style="width:20%;">Função</th>
+              <th style="width:25%;">Folga / Data / PAGO</th>
+              <th style="width:15%; text-align:center;">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-edicao-escala"></tbody>
+        </table>
+      </div>
+
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
+        <button class="btn-salvar" style="width: auto; padding: 12px 20px; font-size: 14px; background: #e2e8f0; color:#1e293b;" onclick="fecharModal('modal-escala-detalhes-editavel')">Cancelar</button>
+        <button class="btn-salvar" style="width: auto; padding: 12px 20px; font-size: 14px; background: #1e3a8a;" id="btn-salvar-edicao-escala">💾 Salvar Alterações</button>
+        <button class="btn-salvar" style="width: auto; padding: 12px 20px; font-size: 14px; background: #10b981;" id="btn-imprimir-escala-detalhe">🖨️ Salvar e Imprimir</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="area-impressao-escala-profissional" style="display: none;">
+  <div class="print-template-container">
+    
+    <div class="print-header-mockup">
+      <h1 class="logo-text">Inovar</h1>
+      <h2 class="logo-subtext">Soluções Ambientais LTDA</h2>
+    </div>
+
+    <table class="print-table">
+      <thead>
+        <tr>
+          <th colspan="5" id="print-escala-tipo" class="th-escala-titulo"></th>
+        </tr>
+        <tr>
+          <th colspan="2" class="th-label-right">DATA</th>
+          <th colspan="3" id="print-escala-data" class="th-data-left"></th>
+        </tr>
+        <tr>
+          <th class="col-mat">MATRÍCULA</th>
+          <th class="col-funcao">FUNÇÃO</th>
+          <th class="col-func">NOME</th>
+          <th class="col-folga-print">FOLGA</th>
+          <th class="col-ass">ASSINATURA</th>
+        </tr>
+      </thead>
+      
+      <tbody id="tbody-print-escala"></tbody>
+      
+      <tfoot>
+        <tr>
+          <td colspan="5" class="print-footer-declaration">
+            DECLARO PARA DEVIDOS FINS, QUE CONCORDO CUMPRIR A ESCALA DE TRABALHO, FOLGANDO CONFORME PLANILHA ACIMA.
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2" class="signature-cell">
+            <div class="sig-space"></div>
+            <div class="sig-label">AUX CONTROLADOR DE MANUTENÇÃO</div>
+          </td>
+          <td class="signature-cell-middle"></td> <td colspan="2" class="signature-cell">
+            <div class="sig-space"></div>
+            <div class="sig-label">ENCARREGADO</div>
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-assinatura-digital" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999;">
+  <div class="modal-box" style="max-width: 500px; width: 90%;">
+    <div class="modal-header">
+      <h2>✍️ Painel de Assinatura Digital</h2>
+      <button class="btn-fechar" onclick="document.getElementById('modal-assinatura-digital').style.display='none'">&times;</button>
+    </div>
+    <div class="modal-body" style="text-align: center; padding: 20px;">
+      <p style="font-size: 13px; color: #64748b; margin-bottom: 12px;">Escreva a assinatura na zona delimitada abaixo:</p>
+      
+      <canvas id="canvas-assinatura" width="440" height="200" style="border: 2px dashed #cbd5e1; border-radius: 8px; background: #f8fafc; cursor: crosshair; touch-action: none; display: block; margin: 0 auto;"></canvas>
+      
+      <div style="display: flex; gap: 10px; justify-content: center; margin-top: 15px;">
+        <button type="button" class="btn-salvar btn-vermelho" style="width: auto; padding: 10px 20px;" onclick="limparCanvasAssinatura()">🗑️ Limpar</button>
+        <button type="button" class="btn-salvar" id="btn-salvar-assinatura-canvas" style="width: auto; padding: 10px 20px; background: #10b981;" onclick="salvarAssinaturaDigital()">💾 Salvar na Planilha</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="aba-atestados" class="aba-tela" style="display:none;">
+  <div class="header-tabela-geral">
+    <h1 class="titulo-tela" style="margin:0;">🩺 Gestão de Atestados</h1>
+    <button class="btn-salvar" onclick="abrirModalNovaOcorrenciaGeral('ATESTADOS')" style="width: auto; padding: 10px 20px;">+ Registrar Atestado</button>
+  </div>
+  <div class="table-wrapper">
+    <table class="tabela-dados">
+      <thead><tr><th>ID</th><th>Funcionário</th><th>Data do Atestado</th><th>Dias</th><th>Ações</th></tr></thead>
+      <tbody id="tbody-atestados"><tr><td colspan="5" class="vazio-msg">A carregar dados...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="aba-advertencias" class="aba-tela" style="display:none;">
+  <div class="header-tabela-geral">
+    <h1 class="titulo-tela" style="margin:0;">⚠️ Gestão de Advertências</h1>
+    <button class="btn-salvar" onclick="abrirModalNovaOcorrenciaGeral('ADVERTÊNCIA')" style="width: auto; padding: 10px 20px; background:#f59e0b;">+ Emitir Advertência</button>
+  </div>
+  <div class="table-wrapper">
+    <table class="tabela-dados">
+      <thead><tr><th>ID</th><th>Data Emissão</th><th>Funcionário</th><th>Resumo do Motivo</th><th>Ações</th></tr></thead>
+      <tbody id="tbody-advertencia"><tr><td colspan="5" class="vazio-msg">A carregar dados...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="aba-suspensoes" class="aba-tela" style="display:none;">
+  <div class="header-tabela-geral">
+    <h1 class="titulo-tela" style="margin:0;">🛑 Gestão de Suspensões</h1>
+    <button class="btn-salvar" onclick="abrirModalNovaOcorrenciaGeral('SUSPENSÃO')" style="width: auto; padding: 10px 20px; background:#ef4444;">+ Emitir Suspensão</button>
+  </div>
+  <div class="table-wrapper">
+    <table class="tabela-dados">
+      <thead><tr><th>ID</th><th>Data Emissão</th><th>Funcionário</th><th>Resumo do Motivo</th><th>Ações</th></tr></thead>
+      <tbody id="tbody-suspensao"><tr><td colspan="5" class="vazio-msg">A carregar dados...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-ocorrencia-geral" style="display:none; z-index: 5000; justify-content: center; align-items: center; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6);">
+  <div class="modal-box" style="width: 90%; max-width: 600px; padding: 25px; background: white; border-radius: 12px; max-height: 90vh; overflow-y: auto;">
+    <div style="display:flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom:10px; margin-bottom: 15px;">
+      <h2 id="titulo-modal-ocorrencia-geral" style="margin:0; font-size: 16px; color:#0f172a;">Registrar Documento</h2>
+      <button type="button" onclick="document.getElementById('modal-ocorrencia-geral').style.display='none'" style="background:none; border:none; font-size:20px; cursor:pointer;">&times;</button>
+    </div>
+
+    <form id="formOcorrenciaGeral" onsubmit="enviarFormularioOcorrenciaGeral(event)">
+      <input type="hidden" id="oco-tipo-geral">
+
+      <div class="input-group" style="background:#f8fafc; padding:10px; border-radius:8px; border:1px solid #e2e8f0; margin-bottom: 15px;">
+        <label style="color:#1e3a8a;">Funcionário Alvo *</label>
+        <input type="text" id="oco-nome-func-input" list="lista-funcionarios-rh" required placeholder="Digite para pesquisar o funcionário..." style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px; font-weight:bold;">
+        <datalist id="lista-funcionarios-rh"></datalist>
+      </div>
+
+      <div id="area-atestado-geral" style="display:none; background: #fff; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px;">
+        <div style="display:flex; gap:15px; margin-bottom:15px; border-bottom:1px solid #e2e8f0; padding-bottom:10px;">
+           <label style="cursor:pointer; font-weight:bold; color:#1e3a8a;"><input type="radio" name="tipoAusencia" value="ATESTADO" checked onchange="alternarModoAtestado()"> Atestado Médico</label>
+           <label style="cursor:pointer; font-weight:bold; color:#b91c1c;"><input type="radio" name="tipoAusencia" value="FALTA" onchange="alternarModoAtestado()"> Falta Injustificada</label>
+        </div>
+
+        <div id="modo-atestado-medico">
+            <div class="input-group"><label>CID / Motivo</label><input type="text" id="oco-motivo"></div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+              <div class="input-group">
+                 <label>Data Atestado</label>
+                 <input type="date" id="oco-data-atestado" onchange="calcularDataRetornoAtestado()">
+              </div>
+              <div class="input-group">
+                 <label>Dias Afast.</label>
+                 <input type="number" id="oco-dias-atestado" min="1" oninput="calcularDataRetornoAtestado()">
+              </div>
+              <div class="input-group">
+                 <label>Data Retorno</label>
+                 <input type="date" id="oco-data-retorno-atestado" readonly style="background:#f1f5f9; color:#1e3a8a; font-weight:bold; cursor:not-allowed;">
+              </div>
+            </div>
+            <div class="input-group">
+               <label>Anexar Imagem/PDF do Atestado</label>
+               <input type="file" id="oco-arquivo-atestado" accept="image/*,.pdf" style="width:100%; padding:8px; border:1px dashed #cbd5e1; background:#f8fafc;">
+            </div>
+        </div>
+
+        <div id="modo-falta-injustificada" style="display:none;">
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+              <div class="input-group"><label>Data da Falta</label><input type="date" id="oco-data-afastamento" onchange="calcularDiasFalta()"></div>
+              <div class="input-group"><label>Retorno ao Trab.</label><input type="date" id="oco-data-retorno-afastamento" onchange="calcularDiasFalta()"></div>
+              <div class="input-group"><label>Qtd. Dias Falta</label><input type="text" id="oco-dias-falta" readonly style="background:#f1f5f9; font-weight:bold; color:#b91c1c;"></div>
+            </div>
+            <p style="font-size:11px; color:#64748b;">A quantidade de dias será descontada automaticamente da folha por ausência injustificada.</p>
+        </div>
+      </div>
+
+      <div id="area-disciplinar-geral" style="display:none;">
+        <div class="input-group">
+          <label>Motivo Legal (Art. 482 da CLT) *</label>
+          <select id="oco-motivo-legal" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; font-size: 12px;">
+            <option value="" disabled selected>Selecione a alínea da infração na CLT...</option>
+            <option value="a) ato de improbidade;">a) ato de improbidade;</option>
+            <option value="b) incontinência de conduta ou mau procedimento;">b) incontinência de conduta ou mau procedimento;</option>
+            <option value="c) negociação habitual sem permissão e prejudicial ao serviço;">c) negociação habitual sem permissão...</option>
+            <option value="d) condenação criminal do empregado, passada em julgado;">d) condenação criminal do empregado...</option>
+            <option value="e) desídia no desempenho das respectivas funções;">e) desídia no desempenho das respectivas funções;</option>
+            <option value="f) embriaguez habitual ou em serviço;">f) embriaguez habitual ou em serviço;</option>
+            <option value="g) violação de segredo da empresa;">g) violação de segredo da empresa;</option>
+            <option value="h) ato de indisciplina ou de insubordinação;">h) ato de indisciplina ou de insubordinação;</option>
+            <option value="i) abandono de emprego;">i) abandono de emprego;</option>
+            <option value="j) ato lesivo da honra ou ofensas físicas no serviço;">j) ato lesivo da honra ou ofensas físicas no serviço;</option>
+            <option value="k) ato lesivo da honra ou ofensas contra o empregador;">k) ato lesivo da honra ou ofensas contra o empregador;</option>
+            <option value="l) prática constante de jogos de azar;">l) prática constante de jogos de azar;</option>
+            <option value="m) perda da habilitação (conduta dolosa);">m) perda da habilitação (conduta dolosa);</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Relato do Ocorrido (Ato) *</span>
+            <button type="button" onclick="melhorarRelatoComIA(event)" style="background:#eff6ff; border:1px solid #bfdbfe; color:#2563eb; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">🤖 Melhorar Texto</button>
+          </label>
+          <textarea id="oco-ato" rows="4" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;" placeholder="Escreva o que aconteceu de forma simples..."></textarea>
+        </div>
+        <div class="input-group"><label>Aplicada Por (Gestor)</label><input type="text" id="oco-aplicada-por" placeholder="Nome do Gestor/RH"></div>
+      </div>
+
+      <button type="submit" id="btn-salvar-oco-geral" class="btn-salvar" style="width:100%; margin-top:15px; padding:12px;">💾 Salvar Registro e Gerar Documento</button>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-espelho-ocorrencia" style="display:none; z-index: 5500; justify-content: center; align-items: center; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6);">
+  <div class="modal-box" style="width: 90%; max-width: 500px; padding: 25px; background: white; border-radius: 12px;">
+    <div style="display:flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom:10px; margin-bottom: 15px;">
+      <h2 style="margin:0; font-size: 16px; color:#0f172a;" id="espelho-oco-titulo">Detalhes do Registro</h2>
+      <button onclick="document.getElementById('modal-espelho-ocorrencia').style.display='none'" style="background:none; border:none; font-size:20px; cursor:pointer;">&times;</button>
+    </div>
+    
+    <div id="espelho-oco-conteudo" style="font-size:13px; color:#475569; margin-bottom:20px; line-height:1.6;"></div>
+    
+    <div style="display:flex; gap:10px; border-top:1px solid #e2e8f0; padding-top:15px;">
+      <a href="#" id="btn-espelho-pdf" target="_blank" class="btn-salvar" style="flex:1; text-align:center; text-decoration:none; background:#3b82f6; display:none;">📄 Visualizar Documento</a>
+      <button id="btn-espelho-excluir" class="btn-salvar" style="flex:1; background:#ef4444;">🗑️ Excluir Registro</button>
+    </div>
+  </div>
+</div>

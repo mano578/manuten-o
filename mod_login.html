@@ -1,0 +1,41 @@
+<div id="tela-login" style="display: none;">
+      <div class="login-box">
+        <svg class="app-logo-svg" viewBox="0 0 300 90" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="45" cy="45" r="32" fill="#10b981"/>
+          <path d="M45 22 C 65 22, 65 45, 45 68 C 25 45, 25 22, 45 22 Z" fill="#ffffff"/>
+          <path d="M45 22 C 45 22, 55 45, 45 68" fill="none" stroke="#10b981" stroke-width="2"/>
+          <text x="88" y="50" font-family="'Poppins', sans-serif" font-weight="800" font-size="40" fill="#0f172a" letter-spacing="0.5">INOVAR</text>
+          <text x="91" y="72" font-family="'Poppins', sans-serif" font-weight="500" font-size="14" fill="#64748b" letter-spacing="0.5">Soluções Ambientais LTDA</text>
+        </svg>
+        <p>Acesso Restrito ao Sistema</p>
+        
+        <div class="input-group">
+          <label>Usuário</label>
+          <input type="text" id="ipt-usuario" placeholder="Digite o seu usuário">
+        </div>
+        
+        <div class="input-group">
+          <label>Senha</label>
+          <div class="senha-wrapper">
+            <input type="password" id="ipt-senha" placeholder="••••••••">
+            <span class="toggle-senha" onclick="toggleSenha()" id="icone-senha" title="Mostrar/Ocultar Senha">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </span>
+          </div>
+        </div>
+        
+        <div class="link-esqueci" style="margin-top: 15px;">
+            <a href="#" onclick="iniciarRecuperacaoSenha(event)" style="cursor: pointer; color: #10b981; font-weight: 600; text-decoration: none;">Esqueceu a senha?</a>
+        </div>
+        
+        <div class="manter-conectado-group">
+          <input type="checkbox" id="chk-manter">
+          <label for="chk-manter">Manter conectado</label>
+        </div>
+        
+        <button class="btn-login" id="btn-entrar" onclick="fazerLogin()">Acessar Sistema</button>
+        <div id="login-erro" style="display: none; color: #ef4444; font-size: 13px; margin-top: 15px; font-weight: bold; text-align: center;"></div>
+        
+      </div>
+    </div>
+

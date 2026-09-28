@@ -1,0 +1,386 @@
+<script>
+  // ================= MÓDULO FRONTEND: CHECKLIST DIÁRIO DOS MOTORISTAS =================
+  var checklistsGlobais = [];
+  var itensCarregadosChecklist = []; // itens (básicos + específicos) do veículo atualmente selecionado no modal
+  var arquivosAvariasSelecionados = []; // File[] escolhidos no input de fotos das avarias, antes do envio
+
+  function carregarListaChecklists() {
+    var tbody = document.getElementById('tbody-lista-checklist');
+    if (!tbody) return;
+    google.script.run
+      .withSuccessHandler(function (lista) {
+        checklistsGlobais = lista || [];
+        renderizarTabelaChecklists(checklistsGlobais);
+      })
+      .withFailureHandler(function (erro) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#ef4444;">Erro ao carregar: ' + (erro && erro.message ? erro.message : erro) + '</td></tr>';
+      })
+      .listarChecklistsDiarios();
+  }
+
+  function _corGravidade(gravidade) {
+    if (gravidade === "CRITICO") return { bg: "#fee2e2", cor: "#b91c1c", texto: "🔴 CRÍTICO" };
+    if (gravidade === "ATENCAO") return { bg: "#fef9c3", cor: "#92400e", texto: "🟡 ATENÇÃO" };
+    return { bg: "#dcfce7", cor: "#166534", texto: "🟢 OK" };
+  }
+
+  // Estilo/rótulo por resposta de ITEM individual (usado no detalhe do checklist). Inclui a nova
+  // opção "Não se aplica", além das 3 já existentes (OK / Atenção / Crítico).
+  function _corItemResposta(resposta) {
+    if (resposta === "CRITICO") return { cor: "#b91c1c", bola: "🔴", label: "CRÍTICO" };
+    if (resposta === "ATENCAO") return { cor: "#92400e", bola: "🟡", label: "ATENÇÃO" };
+    if (resposta === "NAO_SE_APLICA") return { cor: "#64748b", bola: "➖", label: "NÃO SE APLICA" };
+    return { cor: "#166534", bola: "🟢", label: "OK" };
+  }
+
+  function renderizarTabelaChecklists(lista) {
+    var tbody = document.getElementById('tbody-lista-checklist');
+    if (!lista || lista.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#64748b; font-style:italic;">Nenhum checklist registrado ainda.</td></tr>';
+      return;
+    }
+    var html = "";
+    lista.forEach(function (c) {
+      var g = _corGravidade(c.gravidadeGeral);
+      html += '<tr style="border-bottom:1px solid #f1f5f9;">'
+        + '<td style="padding:10px; font-size:13px;">' + c.dataHora + '</td>'
+        + '<td style="padding:10px; font-size:13px; font-weight:600;">' + c.prefixo + '</td>'
+        + '<td style="padding:10px; font-size:13px;">' + c.motorista + '</td>'
+        + '<td style="padding:10px; font-size:13px;">' + c.grupoNome + '</td>'
+        + '<td style="padding:10px; font-size:13px;"><span style="background:' + g.bg + '; color:' + g.cor + '; padding:4px 10px; border-radius:12px; font-size:12px; font-weight:700;">' + g.texto + '</span></td>'
+        + '<td style="padding:10px; font-size:13px;"><button type="button" onclick="verDetalheChecklist(' + c.id + ')" style="background:#e0f2fe; color:#075985; border:none; padding:6px 10px; border-radius:6px; cursor:pointer; font-size:12px;">👁️ Ver</button></td>'
+        + '</tr>';
+    });
+    tbody.innerHTML = html;
+  }
+
+  function filtrarChecklists() {
+    var termo = (document.getElementById('busca-checklist').value || "").toUpperCase();
+    var filtrada = checklistsGlobais.filter(function (c) {
+      return (c.prefixo + " " + c.motorista).toUpperCase().indexOf(termo) > -1;
+    });
+    renderizarTabelaChecklists(filtrada);
+  }
+
+  function abrirModalNovoChecklist() {
+    var form = document.getElementById('formChecklist');
+    if (form) form.reset();
+    document.getElementById('itens-checklist-container').innerHTML = '<div style="text-align:center; padding: 30px; color:#94a3b8; font-style: italic;">🚚 Selecione um veículo acima para carregar os itens do checklist.</div>';
+    document.getElementById('check-grupo-nome').innerText = '';
+    document.getElementById('check-placa').value = '';
+    itensCarregadosChecklist = [];
+
+    // Reseta a seleção de fotos das avarias (input de arquivo + miniaturas de pré-visualização)
+    arquivosAvariasSelecionados = [];
+    var previewFotos = document.getElementById('preview-fotos-avarias');
+    if (previewFotos) previewFotos.innerHTML = '';
+
+    var dl = document.getElementById('lista-veiculos-checklist');
+    if (dl && typeof frotaGlobal !== 'undefined' && Array.isArray(frotaGlobal)) {
+      dl.innerHTML = '';
+      var prefixosJaListados = {};
+      frotaGlobal.slice().sort(function (a, b) { return a.prefixo.localeCompare(b.prefixo); }).forEach(function (v) {
+        var chave = String(v.prefixo).toUpperCase() + '|' + String(v.placa).toUpperCase();
+        if (prefixosJaListados[chave]) return; // evita opções duplicadas quando o cadastro repete o mesmo veículo
+        prefixosJaListados[chave] = true;
+        var rotulo = (v.placa && String(v.placa).toUpperCase() !== String(v.prefixo).toUpperCase()) ? (v.prefixo + ' — ' + v.placa) : v.prefixo;
+        dl.innerHTML += '<option value="' + v.prefixo + '">' + rotulo + '</option>';
+      });
+    }
+
+    document.getElementById('modal-novo-checklist').style.display = 'flex';
+  }
+
+  // Busca o veículo por PREFIXO OU PLACA (o mesmo padrão usado em O.S./Custos), e então pede ao
+  // backend a definição de itens do checklist (básicos + específicos) para o tipo de equipamento dele.
+  function selecionarVeiculoChecklist(valorDigitado) {
+    if (typeof frotaGlobal === 'undefined' || !Array.isArray(frotaGlobal)) return;
+    var alvo = String(valorDigitado || "").toUpperCase();
+    var veiculo = frotaGlobal.find(function (v) {
+      return String(v.prefixo).toUpperCase() === alvo || String(v.placa).toUpperCase() === alvo;
+    });
+
+    var container = document.getElementById('itens-checklist-container');
+    if (!veiculo) {
+      document.getElementById('check-placa').value = '';
+      document.getElementById('check-grupo-nome').innerText = '';
+      container.innerHTML = '<div style="text-align:center; padding: 20px; color:#ef4444;">Veículo não encontrado. Verifique o prefixo/placa.</div>';
+      return;
+    }
+
+    document.getElementById('check-prefixo').value = veiculo.prefixo;
+    document.getElementById('check-placa').value = veiculo.placa;
+    container.innerHTML = '<div style="text-align:center; padding: 20px; color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i> Carregando itens do checklist...</div>';
+
+    google.script.run
+      .withSuccessHandler(function (definicao) {
+        renderizarItensChecklist(definicao);
+      })
+      .withFailureHandler(function (erro) {
+        container.innerHTML = '<div style="text-align:center; padding:20px; color:#ef4444;">Erro ao carregar itens: ' + (erro && erro.message ? erro.message : erro) + '</div>';
+      })
+      .obterDefinicaoChecklistPorTipo(veiculo.informacao || "");
+  }
+
+  // Estilo (preenchido/sólido quando selecionado, contorno neutro quando não) de cada botão de
+  // resposta do item — 4 opções: OK (verde), Atenção (laranja), Crítico (vermelho) e a nova opção
+  // Não se Aplica (cinza), no mesmo padrão visual de botões com ícone usado no app de inspeção.
+  function _estiloBotaoResposta(valor, selecionado) {
+    var cores = {
+      OK: { solido: "#16a34a", texto: "#ffffff" },
+      ATENCAO: { solido: "#f59e0b", texto: "#ffffff" },
+      CRITICO: { solido: "#ef4444", texto: "#ffffff" },
+      NAO_SE_APLICA: { solido: "#64748b", texto: "#ffffff" }
+    };
+    var c = cores[valor] || cores.OK;
+    var base = "width:38px; height:38px; border-radius:8px; cursor:pointer; font-size:15px; display:flex; align-items:center; justify-content:center; transition:0.15s;";
+    if (selecionado) {
+      return base + "background:" + c.solido + "; color:" + c.texto + "; border:1px solid " + c.solido + "; box-shadow:0 1px 3px rgba(0,0,0,0.15);";
+    }
+    return base + "background:#ffffff; color:#94a3b8; border:1px solid #cbd5e1;";
+  }
+
+  // Clique em um dos 4 botões de resposta do item: grava a resposta no input escondido do item e
+  // realça visualmente só o botão escolhido (os outros 3 voltam ao estado neutro).
+  function selecionarRespostaItem(itemId, valor, btnEl) {
+    var campoResposta = document.getElementById('resp_' + itemId);
+    if (campoResposta) campoResposta.value = valor;
+    var wrapper = btnEl.closest('.linha-item-checklist');
+    if (!wrapper) return;
+    wrapper.querySelectorAll('.btn-resp-item').forEach(function (b) {
+      var v = b.getAttribute('data-valor');
+      b.setAttribute('style', _estiloBotaoResposta(v, v === valor));
+    });
+  }
+
+  // Botão de comentário (💬) do item: mostra/esconde o campo de observação daquele item específico.
+  function toggleObsItem(itemId) {
+    var campo = document.getElementById('obs_' + itemId);
+    if (!campo) return;
+    var visivel = campo.style.display === 'block';
+    campo.style.display = visivel ? 'none' : 'block';
+    if (!visivel) campo.focus();
+  }
+
+  function renderizarItensChecklist(definicao) {
+    itensCarregadosChecklist = (definicao.itensBasicos || []).concat(definicao.itensEspecificos || []);
+    document.getElementById('check-grupo-nome').innerText = definicao.grupoNome || '';
+    document.getElementById('check-grupo-nome').dataset.grupoNome = definicao.grupoNome || '';
+
+    function blocoItens(titulo, itens) {
+      var html = '<div style="margin-bottom:8px; font-weight:600; color:#334155; font-size:13px; margin-top:12px;">' + titulo + '</div>';
+      itens.forEach(function (item) {
+        html += '<div class="linha-item-checklist" data-item-id="' + item.id + '" style="border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; margin-bottom:8px;">'
+          + '<div style="font-size:13px; font-weight:500; margin-bottom:8px;">' + item.texto + '</div>'
+          + '<div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">'
+          + '<button type="button" class="btn-resp-item" data-valor="OK" title="🟢 OK" onclick="selecionarRespostaItem(\'' + item.id + '\', \'OK\', this)" style="' + _estiloBotaoResposta("OK", false) + '">✔</button>'
+          + '<button type="button" class="btn-resp-item" data-valor="ATENCAO" title="🟡 Atenção" onclick="selecionarRespostaItem(\'' + item.id + '\', \'ATENCAO\', this)" style="' + _estiloBotaoResposta("ATENCAO", false) + '">⚠</button>'
+          + '<button type="button" class="btn-resp-item" data-valor="CRITICO" title="🔴 Crítico" onclick="selecionarRespostaItem(\'' + item.id + '\', \'CRITICO\', this)" style="' + _estiloBotaoResposta("CRITICO", false) + '">✖</button>'
+          + '<button type="button" class="btn-resp-item" data-valor="NAO_SE_APLICA" title="➖ Não se aplica" onclick="selecionarRespostaItem(\'' + item.id + '\', \'NAO_SE_APLICA\', this)" style="' + _estiloBotaoResposta("NAO_SE_APLICA", false) + '">➖</button>'
+          + '<button type="button" title="💬 Observação" onclick="toggleObsItem(\'' + item.id + '\')" style="width:38px; height:38px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; color:#334155; cursor:pointer; font-size:14px;">💬</button>'
+          + '<input type="hidden" id="resp_' + item.id + '" value="">'
+          + '</div>'
+          + '<input type="text" id="obs_' + item.id + '" placeholder="Observação (opcional)" style="display:none; width:100%; margin-top:8px; padding:6px 8px; font-size:12px; border:1px solid #e2e8f0; border-radius:5px;">'
+          + '</div>';
+      });
+      return html;
+    }
+
+    var htmlFinal = blocoItens('✅ Itens Básicos (todos os veículos)', definicao.itensBasicos || []);
+    if (definicao.itensEspecificos && definicao.itensEspecificos.length) {
+      // Quando os itens específicos trazem "bloco" (ex.: Cabine/Interior, Suspensão, Compactador...),
+      // renderiza um sub-título por bloco, na mesma ordem em que aparecem — igual à organização do
+      // formulário físico usado hoje na garagem. Grupos sem "bloco" continuam em uma única seção,
+      // como antes.
+      var temBlocos = definicao.itensEspecificos.some(function (it) { return !!it.bloco; });
+      if (temBlocos) {
+        var ordemBlocos = [];
+        var itensPorBloco = {};
+        definicao.itensEspecificos.forEach(function (it) {
+          var nomeBloco = it.bloco || definicao.grupoNome;
+          if (!itensPorBloco[nomeBloco]) { itensPorBloco[nomeBloco] = []; ordemBlocos.push(nomeBloco); }
+          itensPorBloco[nomeBloco].push(it);
+        });
+        htmlFinal += '<div style="margin-top:16px; margin-bottom:4px; font-weight:700; color:#0f766e; font-size:14px;">' + definicao.grupoNome + ' — Itens Específicos</div>';
+        ordemBlocos.forEach(function (nomeBloco) {
+          htmlFinal += blocoItens('🔹 ' + nomeBloco, itensPorBloco[nomeBloco]);
+        });
+      } else {
+        htmlFinal += blocoItens(definicao.grupoNome + ' — Itens Específicos', definicao.itensEspecificos);
+      }
+    }
+    document.getElementById('itens-checklist-container').innerHTML = htmlFinal;
+  }
+
+  // Guarda os arquivos escolhidos no input de "Fotos das Avarias" e mostra as miniaturas na hora,
+  // antes de enviar o formulário (o envio/conversão para base64 só acontece em enviarChecklistDiario).
+  function previsualizarFotosAvarias() {
+    var input = document.getElementById('check-fotos-avarias');
+    arquivosAvariasSelecionados = Array.prototype.slice.call((input && input.files) || []);
+    var preview = document.getElementById('preview-fotos-avarias');
+    if (!preview) return;
+    preview.innerHTML = '';
+    arquivosAvariasSelecionados.forEach(function (file) {
+      var reader = new FileReader();
+      reader.onload = function (e) {
+        preview.innerHTML += '<img src="' + e.target.result + '" title="' + file.name + '" style="width:64px; height:64px; object-fit:cover; border-radius:6px; border:1px solid #cbd5e1;">';
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Converte um File em base64 (padrão já usado em outros módulos do sistema, ex.: JS_Admin.html).
+  function _toBase64Checklist(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = function () { resolve(reader.result); };
+      reader.onerror = function (erro) { reject(erro); };
+    });
+  }
+
+  async function enviarChecklistDiario(event) {
+    event.preventDefault();
+    var prefixo = document.getElementById('check-prefixo').value;
+    var placa = document.getElementById('check-placa').value;
+    var motorista = document.getElementById('check-motorista').value;
+    var km = document.getElementById('check-km').value;
+    var grupoNome = document.getElementById('check-grupo-nome').dataset.grupoNome || '';
+    var obsGeral = document.getElementById('check-obs-geral').value;
+
+    if (!itensCarregadosChecklist.length) {
+      alert('⚠️ Selecione um veículo válido para carregar os itens do checklist antes de salvar.');
+      return;
+    }
+
+    var itensRespondidos = [];
+    for (var i = 0; i < itensCarregadosChecklist.length; i++) {
+      var item = itensCarregadosChecklist[i];
+      var campoResposta = document.getElementById('resp_' + item.id);
+      var resposta = campoResposta ? campoResposta.value : '';
+      if (!resposta) {
+        alert('⚠️ Responda o item "' + item.texto + '" antes de salvar.');
+        return;
+      }
+      var obsInput = document.getElementById('obs_' + item.id);
+      itensRespondidos.push({
+        id: item.id,
+        texto: item.texto,
+        resposta: resposta,
+        observacao: obsInput ? obsInput.value : ''
+      });
+    }
+
+    var btn = document.getElementById('btn-salvar-checklist');
+    btn.disabled = true;
+    btn.innerText = '⏳ Processando fotos...';
+
+    // Converte as fotos das avarias (se houver) para base64 antes de enviar ao backend.
+    var fotosAvariasBase64 = [];
+    try {
+      for (var f = 0; f < arquivosAvariasSelecionados.length; f++) {
+        var file = arquivosAvariasSelecionados[f];
+        var completo = await _toBase64Checklist(file);
+        fotosAvariasBase64.push({
+          base64: completo.split(',')[1],
+          mimeType: file.type,
+          nome: file.name
+        });
+      }
+    } catch (erroFoto) {
+      btn.disabled = false;
+      btn.innerText = '💾 Salvar Checklist';
+      alert('❌ Erro ao processar as fotos das avarias: ' + erroFoto);
+      return;
+    }
+
+    btn.innerText = '⏳ Salvando...';
+
+    google.script.run
+      .withSuccessHandler(function (resposta) {
+        btn.disabled = false;
+        btn.innerText = '💾 Salvar Checklist';
+        if (resposta && resposta.sucesso) {
+          fecharModal('modal-novo-checklist');
+          carregarListaChecklists();
+          alert(resposta.mensagem || 'Checklist salvo!');
+        } else {
+          alert('❌ ' + (resposta && resposta.mensagem ? resposta.mensagem : 'Erro ao salvar checklist.'));
+        }
+      })
+      .withFailureHandler(function (erro) {
+        btn.disabled = false;
+        btn.innerText = '💾 Salvar Checklist';
+        alert('❌ Erro de comunicação: ' + (erro && erro.message ? erro.message : erro));
+      })
+      .salvarChecklistDiario({
+        prefixo: prefixo,
+        placa: placa,
+        motorista: motorista,
+        km: km,
+        grupoNome: grupoNome,
+        itens: itensRespondidos,
+        observacaoGeral: obsGeral,
+        fotosAvariasBase64: fotosAvariasBase64
+      });
+  }
+
+  function verDetalheChecklist(id) {
+    var c = checklistsGlobais.find(function (x) { return String(x.id) === String(id); });
+    if (!c) return;
+    var g = _corGravidade(c.gravidadeGeral);
+
+    var html = '<div style="margin-bottom:12px;">'
+      + '<div><b>Data/Hora:</b> ' + c.dataHora + '</div>'
+      + '<div><b>Veículo:</b> ' + c.prefixo + ' (' + c.placa + ')</div>'
+      + '<div><b>Motorista:</b> ' + c.motorista + '</div>'
+      + (c.km ? '<div><b>KM de Saída:</b> ' + c.km + '</div>' : '')
+      + '<div><b>Equipamento:</b> ' + c.grupoNome + '</div>'
+      + '<div><b>Gravidade Geral:</b> <span style="background:' + g.bg + '; color:' + g.cor + '; padding:3px 8px; border-radius:10px; font-size:12px; font-weight:700;">' + g.texto + '</span></div>'
+      + (c.observacaoGeral ? '<div style="margin-top:6px;"><b>Observação Geral:</b> ' + c.observacaoGeral + '</div>' : '')
+      + '</div><hr style="border:none; border-top:1px solid #e2e8f0; margin:10px 0;">';
+
+    (c.itens || []).forEach(function (item) {
+      var infoResposta = _corItemResposta(item.resposta);
+      html += '<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #f1f5f9; font-size:13px;">'
+        + '<span>' + item.texto + (item.observacao ? ' <i style="color:#64748b;">(' + item.observacao + ')</i>' : '') + '</span>'
+        + '<span style="color:' + infoResposta.cor + '; font-weight:600; white-space:nowrap; margin-left:10px;">' + infoResposta.bola + ' ' + infoResposta.label + '</span>'
+        + '</div>';
+    });
+
+    // Fotos das avarias, quando o checklist tiver alguma anexada.
+    if (c.fotosAvarias && c.fotosAvarias.length) {
+      html += '<div style="margin-top:14px;">'
+        + '<div style="font-weight:600; color:#334155; font-size:13px; margin-bottom:8px;">📷 Fotos das Avarias</div>'
+        + '<div style="display:flex; flex-wrap:wrap; gap:8px;">';
+      c.fotosAvarias.forEach(function (url) {
+        html += '<a href="' + url + '" target="_blank"><img src="' + url + '" style="width:80px; height:80px; object-fit:cover; border-radius:6px; border:1px solid #cbd5e1;"></a>';
+      });
+      html += '</div></div>';
+    }
+
+    document.getElementById('corpo-detalhe-checklist').innerHTML = html;
+
+    var btnOS = document.getElementById('btn-abrir-os-checklist');
+    if (btnOS) btnOS.dataset.prefixo = c.prefixo || '';
+
+    document.getElementById('modal-ver-checklist').style.display = 'flex';
+  }
+
+  // Abre a tela de Ordem de Serviço já com o veículo deste checklist pré-selecionado no formulário
+  // de nova O.S. (reaproveita abrirModalNovaOS() do módulo de Manutenção, sem alterar sua lógica).
+  function abrirOSDoChecklist() {
+    var btnOS = document.getElementById('btn-abrir-os-checklist');
+    var prefixo = btnOS ? (btnOS.dataset.prefixo || '') : '';
+    if (!prefixo) { alert('⚠️ Não foi possível identificar o veículo deste checklist.'); return; }
+
+    fecharModal('modal-ver-checklist');
+    if (typeof alternarAba === 'function') alternarAba('ordem-servico');
+
+    setTimeout(function () {
+      if (typeof abrirModalNovaOS === 'function') {
+        abrirModalNovaOS(prefixo);
+      }
+    }, 400);
+  }
+</script>

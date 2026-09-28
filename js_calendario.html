@@ -1,0 +1,365 @@
+<script>
+let eventosDoMes = [];
+
+function iniciarModuloCalendario() {
+  const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  let selectMes = document.getElementById('cal-mes');
+  let selectAno = document.getElementById('cal-ano');
+  
+  // 🔥 O SEGREDO: Limpa as opções antigas para não duplicar!
+  if (selectMes) selectMes.innerHTML = '';
+  if (selectAno) selectAno.innerHTML = '';
+  
+  let dataAtual = new Date();
+  
+  meses.forEach((m, i) => {
+    let opt = new Option(m, i + 1);
+    if (i == dataAtual.getMonth()) opt.selected = true;
+    selectMes.add(opt);
+  });
+  
+  for (let a = 2024; a <= 2030; a++) {
+    let opt = new Option(a, a);
+    if (a == dataAtual.getFullYear()) opt.selected = true;
+    selectAno.add(opt);
+  }
+  
+  gerarCalendarioUI();
+}
+
+function gerarCalendarioUI() {
+  let mes = parseInt(document.getElementById('cal-mes').value);
+  let ano = parseInt(document.getElementById('cal-ano').value);
+  
+  google.script.run.withSuccessHandler(function(eventos) {
+    eventosDoMes = eventos;
+    renderizarGrid(mes, ano);
+  }).listarEventosCalendario(mes, ano);
+}
+
+let dataSelecionadaGlobal = "";
+
+function renderizarGrid(mes, ano) {
+  let grid = document.getElementById('grid-calendario');
+  let headers = grid.querySelectorAll('.dia-semana');
+  grid.innerHTML = "";
+  headers.forEach(h => grid.appendChild(h));
+
+  let primeiroDiaMes = new Date(ano, mes - 1, 1).getDay();
+  let totalDiasMes = new Date(ano, mes, 0).getDate();
+  let dataAtual = new Date();
+  
+  for (let i = 0; i < primeiroDiaMes; i++) {
+    let div = document.createElement('div');
+    div.className = "celula-dia dia-outro-mes";
+    grid.appendChild(div);
+  }
+
+  for (let d = 1; d <= totalDiasMes; d++) {
+    let div = document.createElement('div');
+    div.className = "celula-dia";
+    
+    if (d === dataAtual.getDate() && mes === dataAtual.getMonth() + 1 && ano === dataAtual.getFullYear()) {
+        div.classList.add("dia-hoje");
+    }
+
+    let dataString = `${ano}-${String(mes).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    
+    // MÁGICA DO CLIQUE: Ao invés de abrir a janela, ele seleciona o dia e mostra os eventos embaixo!
+    div.onclick = () => selecionarDiaCalendario(dataString, d, mes, ano, div);
+    
+    div.innerHTML = `<div class="dia-header"><span class="dia-numero">${d}</span></div>`;
+    
+    let manutenciasHoje = eventosDoMes.filter(e => e.data == dataString);
+    manutenciasHoje.forEach(m => {
+      let critClass = m.criticidade == "Alta" ? "crit-alta" : (m.criticidade == "Média" ? "crit-media" : "crit-baixa");
+      // Se tiver concluído, fica com transparência
+      let opacity = m.status === "Realizado" ? "opacity: 0.5;" : "";
+      div.innerHTML += `<div class="evento-manut ${critClass}" style="${opacity}" title="${m.servico}">${m.prefixo}: ${m.servico}</div>`;
+    });
+    
+    grid.appendChild(div);
+  }
+}
+
+// ================= GESTÃO DA LISTA INFERIOR DO CALENDÁRIO =================
+function selecionarDiaCalendario(dataString, dia, mes, ano, elementoClick) {
+    dataSelecionadaGlobal = dataString;
+    
+    // Efeito visual super elegante de seleção do dia na grelha
+    document.querySelectorAll('.celula-dia').forEach(el => {
+        el.style.border = "1px solid #cbd5e1";
+        el.style.boxShadow = "none";
+        el.style.transform = "none";
+        el.style.zIndex = "1";
+    });
+    elementoClick.style.border = "2px solid #3b82f6";
+    elementoClick.style.boxShadow = "0 0 12px rgba(59, 130, 246, 0.4)";
+    elementoClick.style.transform = "scale(1.03)";
+    elementoClick.style.zIndex = "10";
+    
+    document.getElementById('painel-detalhes-dia').style.display = 'block';
+    document.getElementById('titulo-detalhes-dia').innerText = `🗓️ Agenda: ${String(dia).padStart(2,'0')}/${String(mes).padStart(2,'0')}/${ano}`;
+    
+    renderizarListaDoDia();
+}
+
+function renderizarListaDoDia() {
+   let manutencoes = eventosDoMes.filter(e => e.data == dataSelecionadaGlobal);
+   let box = document.getElementById('lista-manutencoes-dia');
+   
+   if (manutencoes.length === 0) {
+       box.innerHTML = `<div style="background: #f8fafc; padding: 20px; border-radius: 8px; text-align: center; color: #64748b; font-size: 14px;">Sem atividades programadas. Aproveite para agendar!</div>`;
+       return;
+   }
+   
+   let html = '';
+   manutencoes.forEach(m => {
+       let corCrit = m.criticidade === 'Alta' ? '#ef4444' : (m.criticidade === 'Média' ? '#f59e0b' : '#10b981');
+       let opacidade = m.status === 'Realizado' ? '0.6' : '1'; 
+       
+       html += `
+       <div style="border: 1px solid #e2e8f0; border-left: 5px solid ${corCrit}; border-radius: 8px; padding: 15px; background: #fff; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; opacity: ${opacidade}; transition: 0.3s;">
+           <div style="flex: 1; min-width: 250px;">
+               <div style="font-weight: 800; color: #1e293b; font-size: 15px;">${m.prefixo} <span style="color:#64748b; font-weight:normal;">| ${m.servico}</span></div>
+               <div style="font-size: 12px; color: #475569; margin-top: 6px; display:flex; gap:10px; flex-wrap:wrap;">
+                   <span style="background:#f1f5f9; padding:3px 8px; border-radius:4px;"><strong>Tipo:</strong> ${m.tipo}</span>
+                   <span style="background:#f1f5f9; padding:3px 8px; border-radius:4px;"><strong>Resp:</strong> ${m.responsavel || '-'}</span>
+                   <span style="background:#f1f5f9; padding:3px 8px; border-radius:4px;"><strong>Custo:</strong> R$ ${m.custo}</span>
+               </div>
+               <div style="font-size: 11px; color: #94a3b8; margin-top: 8px; font-style:italic;">Obs: ${m.obs || 'Nenhuma observação.'}</div>
+           </div>
+           
+           <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+               <select onchange="atualizarStatusManutencao(${m.rowIndex}, this.value)" style="padding: 8px; border-radius: 6px; font-size: 12px; border: 1px solid #cbd5e1; outline:none; font-weight:bold; cursor:pointer; background: #f8fafc;">
+                   <option value="Agendado" ${m.status==='Agendado'?'selected':''}>⏳ Pendente</option>
+                   <option value="Realizado" ${m.status==='Realizado'?'selected':''}>✅ Realizado</option>
+                   <option value="Reagendado" ${m.status==='Reagendado'?'selected':''}>🔄 Reagendado</option>
+               </select>
+               
+               <button onclick="prepararEdicaoManutencao(${m.rowIndex})" style="background: #f59e0b; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight:bold; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">✏️ Editar</button>
+               <button onclick="excluirManutencaoLista(${m.rowIndex})" style="background: #ef4444; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight:bold; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🗑️ Apagar</button>
+           </div>
+       </div>`;
+   });
+   box.innerHTML = html;
+}
+
+// ================= FUNÇÕES DE AÇÃO DOS BOTÕES =================
+function atualizarStatusManutencao(rowIndex, novoStatus) {
+    google.script.run.withSuccessHandler(res => {
+        if(typeof gerarCalendarioUI === 'function') gerarCalendarioUI(); 
+    }).alterarStatusCalendario(rowIndex, novoStatus);
+}
+
+function excluirManutencaoLista(rowIndex) {
+    if(!confirm("Atenção: Tem certeza que deseja apagar este agendamento definitivamente?")) return;
+    google.script.run.withSuccessHandler(res => {
+        if(typeof gerarCalendarioUI === 'function') gerarCalendarioUI(); 
+    }).excluirEventoCalendario(rowIndex);
+}
+
+// ================= GESTÃO DO FORMULÁRIO (NOVO E EDIÇÃO) =================
+function preencherSelectVeiculos() {
+  var selectVeic = document.getElementById('cal-reg-prefixo');
+  if(selectVeic && typeof frotaGlobal !== 'undefined' && Array.isArray(frotaGlobal)) {
+    var htmlOptions = '<option value="" disabled selected>Escolha o Camião...</option>';
+    var frotaOrdenada = [...frotaGlobal].sort((a,b) => String(a.prefixo).localeCompare(String(b.prefixo)));
+    frotaOrdenada.forEach(v => {
+      if(v && v.prefixo) htmlOptions += `<option value="${v.prefixo}">${v.prefixo} ${v.placa ? `(${v.placa})` : ''}</option>`;
+    });
+    selectVeic.innerHTML = htmlOptions;
+  }
+}
+
+// ================= GESTÃO DO FORMULÁRIO (NOVO E EDIÇÃO) =================
+
+function prepararNovaManutencaoDia() {
+  // Limpa o ID Oculto (Avisa o sistema que é um NOVO agendamento)
+  document.getElementById('cal-edit-rowindex').value = ""; 
+  
+  document.getElementById('cal-reg-data').value = dataSelecionadaGlobal;
+  document.getElementById('cal-reg-servico').value = "";
+  document.getElementById('cal-reg-custo').value = "";
+  document.getElementById('cal-reg-responsavel').value = "";
+  document.getElementById('cal-reg-obs').value = "";
+  document.getElementById('cal-reg-criticidade').value = "Baixa";
+  document.getElementById('cal-reg-tipo').value = "Preventiva";
+  preencherSelectVeiculos();
+  document.getElementById('modal-agendar-manutencao').style.display = 'flex';
+}
+
+function prepararEdicaoManutencao(linhaIndex) {
+  // Procura exatamente pelo número da linha e não pelo ID
+  let nota = eventosDoMes.find(e => parseInt(e.rowIndex) === parseInt(linhaIndex));
+  
+  if(!nota) {
+      alert("⚠️ Erro: Não foi possível encontrar os dados desta manutenção.");
+      return; 
+  }
+  preencherSelectVeiculos();
+  
+  document.getElementById('cal-edit-rowindex').value = nota.rowIndex; 
+  document.getElementById('cal-reg-data').value = nota.data;
+  document.getElementById('cal-reg-prefixo').value = nota.prefixo;
+  document.getElementById('cal-reg-servico').value = nota.servico;
+  document.getElementById('cal-reg-criticidade').value = nota.criticidade;
+  document.getElementById('cal-reg-tipo').value = nota.tipo;
+  document.getElementById('cal-reg-custo').value = nota.custo || "";
+  document.getElementById('cal-reg-responsavel').value = nota.responsavel || "";
+  document.getElementById('cal-reg-obs').value = nota.obs || "";
+  
+  document.getElementById('modal-agendar-manutencao').style.display = 'flex';
+}
+
+// NOTA (revisão): a função enviarFormularioCalendario estava duplicada neste arquivo.
+// A primeira versão chamava o backend antigo salvarEventoCalendario(); foi removida
+// porque a segunda versão (mais abaixo, que usa o "NOVO MOTOR DE GRAVAÇÃO"
+// processarGravacaoCalendario) era a que realmente executava em runtime, já que a
+// última definição de uma função com o mesmo nome sobrescreve as anteriores em JS.
+
+// ================= MOTOR DO PAINEL GERAL E CALENDÁRIO (SYNC MÚLTIPLO) =================
+function carregarNotificacoesManutencaoPainel(silencioso = false) {
+  // Procura TODAS as caixas de alerta no sistema (Painel Geral e Calendário)
+  var boxes = document.querySelectorAll('.caixas-alertas-manutencao-multiplas');
+  if(boxes.length === 0) return;
+  
+  if (!silencioso) {
+      boxes.forEach(box => {
+          if (box.innerHTML.trim() === '') {
+              box.innerHTML = '<span style="color:#64748b; font-size:12px;">⏳ Sincronizando com a frota...</span>';
+          }
+      });
+  }
+  
+  google.script.run.withSuccessHandler(function(lista) {
+      var html = '';
+      
+      if (lista.length === 0) {
+         html = '<div style="background:#f8fafc; padding:15px; border-radius:6px; font-size:13px; color:#10b981; font-weight:bold; text-align:center; border: 1px dashed #cbd5e1;">✅ Agenda limpa! Nenhuma manutenção pendente para os próximos 7 dias.</div>';
+      } else {
+          lista.forEach(m => {
+             let corCrit = m.criticidade === 'Alta' ? '#ef4444' : (m.criticidade === 'Média' ? '#f59e0b' : '#10b981');
+             let alertaAtraso = m.atrasado ? '<span style="background:#fee2e2; color:#b91c1c; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:6px;">⚠️ ATRASADO</span>' : '';
+             
+             html += `<div style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid ${corCrit}; padding: 12px; border-radius: 8px; transition: 0.2s; margin-bottom: 8px;">
+                <div>
+                    <strong style="color:#1e293b; font-size:13px;">${m.prefixo}</strong>
+                    <span style="font-size:11px; color:#64748b; margin-left:5px;">| ${m.servico}</span>
+                    ${alertaAtraso}
+                </div>
+                <div style="font-size:11px; font-weight:bold; background:#e0e7ff; color:#1e3a8a; padding:4px 8px; border-radius:6px;">📅 ${m.data}</div>
+             </div>`;
+          });
+      }
+      
+      // Injona o HTML processado em TODAS as caixas encontradas no ecrã de uma só vez
+      boxes.forEach(box => {
+          box.innerHTML = html;
+      });
+      
+  }).listarAlertasPainelGeral();
+}
+
+// ================= GATILHO DE ATUALIZAÇÃO INVISÍVEL =================
+// O robô roda a cada 15 segundos (15000 milissegundos) para procurar alterações
+setInterval(function() {
+    var abaAtiva = localStorage.getItem('ultimaAbaInovar') || 'painel-geral';
+    // Só consome internet se o utilizador estiver ativamente na aba principal
+    if (abaAtiva === 'painel-geral') {
+        carregarNotificacoesManutencaoPainel(true); // O "true" aciona o modo silencioso!
+    }
+}, 15000);
+
+// Carregamento inicial (espera 2 segs para a página abrir primeiro)
+document.addEventListener("DOMContentLoaded", function() {
+    setTimeout(() => carregarNotificacoesManutencaoPainel(false), 2000);
+});
+// ================= LÓGICA DE ABERTURA E GRAVAÇÃO DO CALENDÁRIO =================
+
+  function abrirModalAgendarManut(dataString) {
+    // 1. Tranca a data do dia clicado no calendário
+    document.getElementById('cal-reg-data').value = dataString;
+    
+    // 2. Limpa os campos de digitação de cliques anteriores
+    document.getElementById('cal-reg-servico').value = "";
+    document.getElementById('cal-reg-custo').value = "";
+    document.getElementById('cal-reg-responsavel').value = "";
+    document.getElementById('cal-reg-obs').value = "";
+    document.getElementById('cal-reg-criticidade').value = "Baixa";
+    document.getElementById('cal-reg-tipo').value = "Preventiva";
+    
+    // 3. INTELIGÊNCIA: Monta o dropdown de camiões com base nos veículos cadastrados no sistema
+    var selectVeic = document.getElementById('cal-reg-prefixo');
+    if(selectVeic && typeof frotaGlobal !== 'undefined' && Array.isArray(frotaGlobal)) {
+      var htmlOptions = '<option value="" disabled selected>Escolha o Caminhão...</option>';
+      
+      // Ordena a lista por prefixo para ficar organizado
+      var frotaOrdenada = [...frotaGlobal].sort((a,b) => String(a.prefixo).localeCompare(String(b.prefixo)));
+      
+      frotaOrdenada.forEach(v => {
+        if(v && v.prefixo) {
+          var identificadorPlaca = v.placa ? ` (${v.placa})` : '';
+          htmlOptions += `<option value="${v.prefixo}">${v.prefixo}${identificadorPlaca}</option>`;
+        }
+      });
+      selectVeic.innerHTML = htmlOptions;
+    } else {
+      selectVeic.innerHTML = '<option value="">⚠️ Erro ao carregar frota</option>';
+    }
+    
+    // 4. Abre o formulário na tela
+    document.getElementById('modal-agendar-manutencao').style.display = 'flex';
+  }
+
+  function enviarFormularioCalendario(event) {
+  event.preventDefault();
+  
+  var idLinhaEdicao = document.getElementById('cal-edit-rowindex').value;
+
+  var dados = {
+    rowIndex: idLinhaEdicao, 
+    data: document.getElementById('cal-reg-data').value,
+    prefixo: document.getElementById('cal-reg-prefixo').value,
+    servico: document.getElementById('cal-reg-servico').value.toUpperCase(),
+    criticidade: document.getElementById('cal-reg-criticidade').value,
+    tipo: document.getElementById('cal-reg-tipo').value,
+    custo: document.getElementById('cal-reg-custo').value,
+    responsavel: document.getElementById('cal-reg-responsavel').value.toUpperCase(),
+    obs: document.getElementById('cal-reg-obs').value
+  };
+
+  var btn = document.getElementById('btn-submit-agenda');
+  var txtOriginal = btn.innerText;
+  btn.innerText = "⏳ A gravar na base de dados..."; btn.disabled = true;
+
+  // 🔥 CHAMA O NOVO MOTOR DE GRAVAÇÃO DO SERVIDOR 🔥
+  google.script.run.withSuccessHandler(res => {
+    alert(res.mensagem); 
+    fecharModal('modal-agendar-manutencao');
+    if(typeof gerarCalendarioUI === 'function') gerarCalendarioUI(); 
+    btn.innerText = txtOriginal; btn.disabled = false;
+  }).withFailureHandler(err => {
+    alert("Erro de comunicação: " + err.message);
+    btn.innerText = txtOriginal; btn.disabled = false;
+  }).processarGravacaoCalendario(dados); 
+}
+  function executarAnalisePreditivaIA() {
+  if(!confirm("Deseja ativar o algoritmo de IA para recalcular a rodagem da frota e projetar as próximas revisões de 10k KM?")) return;
+  
+  // Cria um aviso de processamento
+  var btn = document.querySelector("button[onclick='executarAnalisePreditivaIA()']");
+  var txtOriginal = btn.innerText;
+  btn.innerText = "⏳ Robô Analisando..."; btn.disabled = true; btn.style.background = "#64748b";
+
+  google.script.run.withSuccessHandler(function(res) {
+     alert(res.mensagem);
+     // Recarrega o calendário para mostrar os novos blocos preditivos gerados pela IA!
+     if(typeof gerarCalendarioUI === 'function') gerarCalendarioUI();
+     btn.innerText = txtOriginal; btn.disabled = false; btn.style.background = "#10b981";
+  }).withFailureHandler(function(err) {
+     alert("❌ Falha crítica no processador de IA.");
+     btn.innerText = txtOriginal; btn.disabled = false; btn.style.background = "#10b981";
+  }).processarManutencaoPreditivaIA();
+}
+</script>

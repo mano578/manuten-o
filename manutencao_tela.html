@@ -1,0 +1,483 @@
+<div id="aba-radar-manutencao" class="aba-tela" style="display:none; padding: 20px;">
+  <div class="header-tabela-geral" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+    <div>
+       <h1 class="titulo-tela" style="margin:0; font-size: 22px; color: #0f172a;"><i class="fa-solid fa-satellite-dish" style="color: #3b82f6;"></i> Radar de Manutenção & Frota</h1>
+       <p style="margin: 5px 0 0 0; color: #64748b; font-size: 13px;">Controlo inteligente de Mecânica (KM/H), Lubrificações, Garantias e Tacógrafo.</p>
+    </div>
+    <button class="btn-salvar" onclick="abrirModalManutencaoGeral()" style="background: #1e3a8a; padding: 12px 24px; display:flex; align-items:center; gap:8px;">
+       <i class="fa-solid fa-plus"></i> Novo Registro / Alerta
+    </button>
+  </div>
+  <div style="display:flex; gap: 15px; margin-bottom: 20px; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); flex-wrap: wrap;">
+    <div style="flex: 1; min-width: 250px;">
+      <label style="font-size: 11px; font-weight: bold; color: #64748b; margin-bottom: 5px; display: block;">Pesquisa Rápida</label>
+      <input type="text" id="pesquisa-radar" placeholder="🔍 Buscar prefixo, tipo de serviço, peça..." onkeyup="filtrarTabelaRadar()" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; outline: none;">
+    </div>
+    <div style="width: 250px;">
+      <label style="font-size: 11px; font-weight: bold; color: #64748b; margin-bottom: 5px; display: block;">Status do Registro</label>
+      <select id="filtro-status-radar" onchange="filtrarTabelaRadar()" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; font-weight: bold; color: #1e3a8a; cursor: pointer; outline: none;">
+        <option value="ATIVOS">🚨 Alertas Ativos (Pendentes)</option>
+        <option value="HISTORICO">✅ Histórico (Concluídos)</option>
+        <option value="TODOS">Ver Todos</option>
+      </select>
+    </div>
+  </div>
+  <div class="table-wrapper" style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+    <table style="width: 100%; border-collapse: collapse; text-align: left;">
+      <thead>
+        <tr style="border-bottom: 2px solid #e2e8f0; color: #475569; font-size: 12px; text-transform: uppercase;">
+          <th style="padding: 12px 8px;">Veículo</th>
+          <th style="padding: 12px 8px;">Categoria / Serviço</th>
+          <th style="padding: 12px 8px;">Progresso / Alvo</th>
+          <th style="padding: 12px 8px;">Status (Falta / Atraso)</th>
+          <th style="padding: 12px 8px; text-align:center;">Ações (Baixa)</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-radar-manutencao">
+        <tr><td colspan="5" class="vazio-msg" style="text-align:center; padding: 30px;">⏳ A carregar Radar...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-manutencao-geral" style="display:none; z-index: 5000; justify-content: center; align-items: center; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6);">
+  <div class="modal-box" style="width: 90%; max-width: 650px; padding: 25px; background: white; border-radius: 12px; max-height: 90vh; overflow-y: auto;">
+    
+    <div style="display:flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom:10px; margin-bottom: 20px;">
+      <h2 style="margin:0; font-size: 18px; color:#0f172a;"><i class="fa-solid fa-clipboard-list" style="color:#3b82f6;"></i> Lançamento de Manutenção</h2>
+      <button type="button" onclick="document.getElementById('modal-manutencao-geral').style.display='none'" style="background:none; border:none; font-size:24px; cursor:pointer;">&times;</button>
+    </div>
+
+    <form id="formManutencaoGeral" onsubmit="salvarManutencaoGeralJS(event)">
+      
+      <!-- 🔥 NOVOS CAMPOS: CATEGORIA E STATUS DE REALIZAÇÃO JUNTOS 🔥 -->
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:15px; background:#eff6ff; padding:15px; border-radius:8px; border:1px solid #bfdbfe;">
+         <div class="input-group">
+            <label style="font-weight:bold; color:#1e3a8a;">O que deseja registrar? *</label>
+            <select id="mnt-categoria" required onchange="alternarCamposManutencao()" style="width:100%; padding:10px; border-radius:6px; border:1px solid #93c5fd; font-weight:bold; cursor:pointer;">
+               <option value="" disabled selected>Selecione a categoria...</option>
+               <option value="MECANICA">⚙️ Manutenção Mecânica</option>
+               <option value="LUBRIFICACAO">💧 Lubrificação</option>
+               <option value="GARANTIA">🛡️ Garantia de Equipamento</option>
+               <option value="TACOGRAFO">⏱️ Aferição de Tacógrafo</option>
+            </select>
+         </div>
+         <div class="input-group">
+            <label style="font-weight:bold; color:#1e3a8a;">Situação do Serviço? *</label>
+            <select id="mnt-status-realizacao" required onchange="alternarCamposManutencao()" style="width:100%; padding:10px; border-radius:6px; border:1px solid #93c5fd; font-weight:bold; cursor:pointer;">
+               <option value="REALIZADO" selected>✅ Já foi feito (Projetar próxima)</option>
+               <option value="AGENDADO">⏳ Não foi feito (Apenas agendar)</option>
+               <option value="HISTORICO">🗄️ Histórico (Apenas guardar dados)</option>
+            </select>
+         </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px; margin-bottom:15px;">
+        <div class="input-group">
+          <label>Prefixo do Caminhão *</label>
+          <input type="text" id="mnt-prefixo" list="lista-frota-mnt" required placeholder="Ex: C15.1002" style="width:100%; padding:10px; border-radius:6px; border:1px solid #cbd5e1; font-weight:bold; text-transform:uppercase;">
+          <datalist id="lista-frota-mnt"></datalist>
+        </div>
+        
+        <div class="input-group">
+          <label>Tipo Equipamento *</label>
+          <input type="text" id="mnt-tipo-equipamento" list="lista-tipos-equip" required placeholder="Ex: PLANALTO" style="width:100%; padding:10px; border-radius:6px; border:1px solid #cbd5e1; font-weight:bold; text-transform:uppercase;">
+          <datalist id="lista-tipos-equip">
+             <option value="PLANALTO"></option>
+             <option value="USIMECA"></option>
+             <option value="LOPAC"></option>
+             <option value="CIMASP"></option>
+             <option value="OUTRO..."></option>
+          </datalist>
+        </div>
+
+        <div class="input-group">
+          <label id="label-data-realiz">Data de Realização *</label>
+          <input type="date" id="mnt-data" required onchange="calcularPrevisaoJS()" style="width:100%; padding:10px; border-radius:6px; border:1px solid #cbd5e1;">
+        </div>
+      </div>
+
+      <div id="area-mecanica" style="display:none; background:#f8fafc; padding:15px; border-radius:8px; border:1px solid #e2e8f0; margin-bottom:15px;">
+         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:15px;">
+            <div class="input-group">
+               <label>Medir desgaste por? *</label>
+               <select id="mnt-tipo-medicao" onchange="calcularPrevisaoJS()" style="width:100%; padding:10px; border-radius:6px; border:1px solid #cbd5e1;">
+                  <option value="KM" selected>Quilometragem (KM)</option>
+                  <option value="HORAS">Horas (Trabalho Severo)</option>
+               </select>
+            </div>
+            <div class="input-group">
+               <label id="label-km-atual">KM / Hora do Caminhão na Troca *</label>
+               <input type="number" id="mnt-km-hora-atual" placeholder="Ex: 125000 ou 600" style="width:100%; padding:10px; border-radius:6px; border:1px solid #cbd5e1; font-weight:bold; color:#b91c1c;">
+            </div>
+         </div>
+      </div>
+
+      <div id="area-lubrificacao" style="display:none; background:#f8fafc; padding:15px; border-radius:8px; border:1px solid #e2e8f0; margin-bottom:15px;">
+         <div class="input-group">
+            <label>Tipo de Lubrificação *</label>
+            <select id="mnt-tipo-lubrificacao" onchange="calcularPrevisaoJS()" style="width:100%; padding:10px; border-radius:6px; border:1px solid #cbd5e1;">
+               <option value="" disabled selected>Selecione...</option>
+               <option value="Equipamento/Compactador">Lubrificar Equipamento (Gera alerta a cada 7 Dias)</option>
+               <option value="Bomba Hidraulica">Lubrificar Bomba (Gera alerta a cada 30 Dias)</option>
+            </select>
+         </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:15px;">
+        <div class="input-group">
+          <label id="label-intervalo">Intervalo para Próxima *</label>
+          <input type="number" id="mnt-intervalo" required oninput="calcularPrevisaoJS()" placeholder="Valor (KM, H ou Dias)" style="width:100%; padding:10px; border-radius:6px; border:1px solid #cbd5e1; background:#f0fdf4; color:#166534; font-weight:bold;">
+        </div>
+        <div class="input-group">
+          <label>Previsão Matemática (Auto)</label>
+          <input type="text" id="mnt-previsao-tela" readonly placeholder="A aguardar dados..." style="width:100%; padding:10px; border-radius:6px; border:1px solid #cbd5e1; background:#f1f5f9; color:#64748b; font-size:12px; font-weight:bold;">
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:15px;">
+         <div class="input-group">
+            <label id="label-tipo-manutencao">Classificação do Serviço *</label>
+            <select id="mnt-classificacao" required style="width:100%; padding:10px; border-radius:6px; border:1px solid #cbd5e1;">
+               <option value="PREVENTIVA">Preventiva (Agendada)</option>
+               <option value="CORRETIVA PLANEJADA">Corretiva Planejada</option>
+               <option value="CORRETIVA NAO PLANEJADA">Corretiva Não Planejada (Quebrou)</option>
+               <option value="PREDITIVA">Preditiva (Análise/Monitorização)</option>
+            </select>
+         </div>
+         <div class="input-group">
+            <label id="label-executor">Executor / Oficina</label>
+            <input type="text" id="mnt-executor" placeholder="Quem fez o serviço?" style="width:100%; padding:10px; border-radius:6px; border:1px solid #cbd5e1;">
+         </div>
+      </div>
+      
+      <div class="input-group" style="margin-bottom:15px;">
+         <label>Descrição do que foi realizado / Peças *</label>
+         <textarea id="mnt-descricao" required rows="2" style="width:100%; padding:10px; border-radius:6px; border:1px solid #cbd5e1; font-family:inherit;"></textarea>
+      </div>
+
+      <div class="input-group" style="margin-bottom:20px;">
+         <label>Anexar O.S. ou Comprovativo (PDF / Img)</label>
+         <input type="file" id="mnt-arquivo" accept="image/*,.pdf" style="width:100%; padding:8px; border:1px dashed #cbd5e1; background:#f8fafc;">
+      </div>
+
+      <button type="submit" id="btn-salvar-mnt" class="btn-salvar" style="width:100%; padding:14px; font-size:15px; background:#1e3a8a;">
+        💾 Salvar / Registrar
+      </button>
+    </form>
+  </div>
+</div>
+<div id="modal-data-baixa" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; justify-content:center; align-items:center;">
+  <div style="background:white; padding:25px; border-radius:12px; width:90%; max-width:350px; text-align:center; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+    <div style="font-size: 40px; color: #10b981; margin-bottom: 10px;"><i class="fa-solid fa-calendar-check"></i></div>
+    <h3 style="margin:0 0 5px 0; color:#0f172a;">Confirmar Baixa</h3>
+    <p style="font-size:13px; color:#64748b; margin-bottom: 20px;">Selecione a data exata em que o serviço foi finalizado:</p>
+    
+    <input type="date" id="input-data-baixa" style="width:100%; padding:12px; border-radius:6px; border:1px solid #cbd5e1; margin-bottom:20px; box-sizing:border-box; font-size: 15px; font-weight: bold; color: #1e3a8a; outline:none;">
+    <input type="hidden" id="baixa-linha">
+    <input type="hidden" id="baixa-id">
+    
+    <div style="display:flex; gap:10px; justify-content:center;">
+       <button type="button" onclick="document.getElementById('modal-data-baixa').style.display='none'" style="flex:1; padding:10px; border:none; border-radius:6px; background:#e2e8f0; color:#475569; font-weight:bold; cursor:pointer;">Cancelar</button>
+       <button type="button" onclick="confirmarBaixaComData()" style="flex:1; padding:10px; border:none; border-radius:6px; background:#10b981; color:white; font-weight:bold; cursor:pointer; box-shadow: 0 4px 6px rgba(16,185,129,0.3);">✔️ Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ================= LÓGICA DE FRONT-END (MANUTENÇÃO) =================
+
+  function alternarCamposManutencao() {
+     var cat = document.getElementById('mnt-categoria').value;
+     var statusReg = document.getElementById('mnt-status-realizacao').value;
+     
+     document.getElementById('area-mecanica').style.display = (cat === 'MECANICA') ? 'block' : 'none';
+     document.getElementById('area-lubrificacao').style.display = (cat === 'LUBRIFICACAO') ? 'block' : 'none';
+     
+     var intv = document.getElementById('mnt-intervalo');
+     var labelInt = document.getElementById('label-intervalo');
+     var labelData = document.getElementById('label-data-realiz');
+     var labelKm = document.getElementById('label-km-atual');
+     
+     // COMPORTAMENTO DINÂMICO CONFORME O STATUS (AGENDADO VS REALIZADO)
+     if (statusReg === 'AGENDADO') {
+         labelData.innerText = "Data do Agendamento *";
+         labelKm.innerText = "KM / Hora Alvo *";
+         intv.readOnly = true; 
+         intv.value = 0; // Zera o intervalo, pois o alvo é exato!
+         labelInt.innerText = "Intervalo (Irrelevante p/ Agendamento)";
+     } else {
+         labelData.innerText = "Data de Realização *";
+         labelKm.innerText = "KM / Hora do Caminhão na Troca *";
+         intv.readOnly = false;
+         
+         if (cat === 'LUBRIFICACAO') {
+            intv.readOnly = true; 
+            labelInt.innerText = "Dias para Próxima";
+            document.getElementById('mnt-km-hora-atual').removeAttribute('required');
+         } else if (cat === 'GARANTIA') {
+            intv.readOnly = false;
+            labelInt.innerText = "Dias de Garantia *";
+            document.getElementById('mnt-km-hora-atual').removeAttribute('required');
+         } else if (cat === 'TACOGRAFO') {
+            intv.readOnly = true; 
+            intv.value = 2; // Tacógrafo é travado em 2 anos
+            labelInt.innerText = "Anos de Validade";
+            document.getElementById('mnt-km-hora-atual').removeAttribute('required');
+         } else {
+            labelInt.innerText = "Intervalo (KM ou Horas) *";
+            document.getElementById('mnt-km-hora-atual').setAttribute('required', 'true');
+         }
+     }
+     calcularPrevisaoJS();
+  }
+
+  function calcularPrevisaoJS() {
+     var cat = document.getElementById('mnt-categoria').value;
+     var statusReg = document.getElementById('mnt-status-realizacao').value;
+     var dataRealiz = document.getElementById('mnt-data').value;
+     var intvInput = document.getElementById('mnt-intervalo');
+     var visor = document.getElementById('mnt-previsao-tela');
+     
+     // Se for agendamento, ignora matemáticas extras, a data digitada é a própria meta!
+     if (statusReg === 'AGENDADO') {
+         intvInput.value = 0;
+         visor.value = "Radar apontado diretamente para a data/KM acima.";
+         return;
+     }
+
+     if(cat === 'LUBRIFICACAO') {
+        var tipoLub = document.getElementById('mnt-tipo-lubrificacao').value;
+        if(tipoLub.includes("Equipamento")) intvInput.value = 7;
+        else if(tipoLub.includes("Bomba")) intvInput.value = 30;
+     } else if (cat === 'TACOGRAFO') {
+        intvInput.value = 2; 
+     }
+     
+     if(!dataRealiz || !intvInput.value) { visor.value = ""; return; }
+     var intervalo = parseFloat(intvInput.value) || 0;
+     
+     if (cat === 'MECANICA' && document.getElementById('mnt-tipo-medicao').value === 'KM') {
+         var kmAtual = parseFloat(document.getElementById('mnt-km-hora-atual').value) || 0;
+         visor.value = "Próxima Troca: " + (kmAtual + intervalo) + " KM";
+     } 
+     else if (cat === 'MECANICA' && document.getElementById('mnt-tipo-medicao').value === 'HORAS') {
+         var diasAdicionar = Math.ceil((intervalo / 108) * 7); 
+         var d = new Date(dataRealiz + "T12:00:00");
+         d.setDate(d.getDate() + diasAdicionar);
+         visor.value = "Estimado p/ Data: " + d.toLocaleDateString('pt-BR') + " (Cálculo 18h/dia)";
+     } 
+     else if (cat === 'TACOGRAFO') {
+         var dAnos = new Date(dataRealiz + "T12:00:00");
+         dAnos.setFullYear(dAnos.getFullYear() + intervalo);
+         visor.value = "Vencimento: " + dAnos.toLocaleDateString('pt-BR');
+     }
+     else { 
+         var d2 = new Date(dataRealiz + "T12:00:00");
+         d2.setDate(d2.getDate() + intervalo);
+         visor.value = "Próxima Exata: " + d2.toLocaleDateString('pt-BR');
+     }
+  }
+
+  function abrirModalManutencaoGeral() {
+    document.getElementById('formManutencaoGeral').reset();
+    document.getElementById('mnt-data').value = new Date().toISOString().split('T')[0];
+    alternarCamposManutencao();
+    
+    if(typeof frotaGlobal !== 'undefined') {
+       document.getElementById('lista-frota-mnt').innerHTML = frotaGlobal.map(f => `<option value="${f.prefixo}">${f.placa}</option>`).join('');
+    }
+    document.getElementById('modal-manutencao-geral').style.display = 'flex';
+  }
+
+  async function salvarManutencaoGeralJS(e) {
+    e.preventDefault();
+    var btn = document.getElementById('btn-salvar-mnt');
+    btn.innerHTML = "⏳ A Processar e Salvar..."; btn.disabled = true;
+
+    var prefixo = document.getElementById('mnt-prefixo').value.trim();
+    var placa = "";
+    if(typeof frotaGlobal !== 'undefined') {
+       var f = frotaGlobal.find(x => String(x.prefixo).toUpperCase() === prefixo.toUpperCase());
+       if(f) placa = f.placa || ""; 
+    }
+
+    var tipoEquipamento = document.getElementById('mnt-tipo-equipamento').value.trim();
+    var cat = document.getElementById('mnt-categoria').value;
+    var tipoMedicao = (cat === 'MECANICA') ? document.getElementById('mnt-tipo-medicao').value : (cat === 'TACOGRAFO' ? 'ANOS' : 'DIAS');
+    
+    var arquivoBase64 = "", arquivoMimeType = "", arquivoNome = "";
+    var inputFicheiro = document.getElementById('mnt-arquivo');
+    if(inputFicheiro.files.length > 0) {
+      var file = inputFicheiro.files[0];
+      arquivoBase64 = await new Promise((resolve) => {
+        let reader = new FileReader(); reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+      });
+      arquivoMimeType = file.type; arquivoNome = file.name;
+    }
+
+    var dados = {
+      categoria: cat,
+      statusRegistro: document.getElementById('mnt-status-realizacao').value, // <-- ENVIA O STATUS PARA O SERVIDOR
+      dataRealizacao: document.getElementById('mnt-data').value,
+      prefixo: prefixo, 
+      placa: placa, 
+      tipoEquipamento: tipoEquipamento,
+      tipoMedicao: tipoMedicao,
+      kmHoraAtual: document.getElementById('mnt-km-hora-atual').value || "",
+      intervalo: document.getElementById('mnt-intervalo').value,
+      tipoManutencao: document.getElementById('mnt-classificacao').value,
+      descricao: cat === 'LUBRIFICACAO' ? document.getElementById('mnt-tipo-lubrificacao').value : document.getElementById('mnt-descricao').value,
+      executor: document.getElementById('mnt-executor').value || "",
+      arquivoBase64: arquivoBase64, 
+      arquivoMimeType: arquivoMimeType, 
+      arquivoNome: arquivoNome
+    };
+
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      document.getElementById('modal-manutencao-geral').style.display = 'none';
+      btn.innerHTML = "💾 Salvar / Registrar"; btn.disabled = false;
+      carregarRadarManutencao();
+    }).salvarManutencaoUnificadaBackend(dados);
+  }
+
+  var dadosRadarGlobal = [];
+
+  // RENDERIZA O PAINEL DE ALERTAS (AGORA COM CARREGAMENTO INSTANTÂNEO POR MEMÓRIA)
+  function carregarRadarManutencao() {
+    var tbody = document.getElementById('tbody-radar-manutencao');
+    if(!tbody) return;
+    
+    // 🔥 PULO DO GATO: Se já temos dados na memória de antes, mostra na hora! Velocidade zero clique.
+    if (dadosRadarGlobal && dadosRadarGlobal.length > 0) {
+       filtrarTabelaRadar();
+       
+       // Mesmo já mostrando, faz uma checagem rápida e silenciosa no fundo para garantir atualizações
+       google.script.run
+         .withSuccessHandler(function(res) {
+           if(res.sucesso) {
+              dadosRadarGlobal = res.dados || [];
+              filtrarTabelaRadar();
+           }
+         })
+         .listarRadarManutencaoBackend();
+       return;
+    }
+    
+    // Se a memória estiver completamente vazia (primeira abertura do dia), aí sim mostra o carregando tradicional
+    tbody.innerHTML = "<tr><td colspan='5' class='vazio-msg' style='text-align:center; padding: 30px;'><i class='fa-solid fa-spinner fa-spin'></i> A sincronizar com os Abastecimentos...</td></tr>";
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if(!res.sucesso) {
+           tbody.innerHTML = `<tr><td colspan='5' style='text-align:center; padding:30px; color:#ef4444; font-weight:bold;'>❌ Erro ao carregar: ${res.mensagem}</td></tr>`;
+           return;
+        }
+        dadosRadarGlobal = res.dados || [];
+        filtrarTabelaRadar(); 
+      })
+      .listarRadarManutencaoBackend();
+  }
+
+  function filtrarTabelaRadar() {
+    var tbody = document.getElementById('tbody-radar-manutencao');
+    var inputPesquisa = document.getElementById('pesquisa-radar');
+    var filtroStatus = document.getElementById('filtro-status-radar');
+
+    var termo = inputPesquisa ? inputPesquisa.value.toLowerCase() : "";
+    var statusFiltro = filtroStatus ? filtroStatus.value : "ATIVOS";
+
+    if (!dadosRadarGlobal || dadosRadarGlobal.length === 0) {
+       tbody.innerHTML = "<tr><td colspan='5' style='text-align:center; padding:30px; color:#94a3b8;'>✅ Tudo em dia! Sem manutenções pendentes no Radar.</td></tr>";
+       return;
+    }
+
+    var filtrados = dadosRadarGlobal.filter(function(item) {
+        if (statusFiltro === "ATIVOS" && item.isConcluido) return false;
+        if (statusFiltro === "HISTORICO" && !item.isConcluido) return false;
+        if (termo !== "") {
+            var textoBusca = (item.prefixo + " " + item.placa + " " + item.categoria + " " + item.descricao).toLowerCase();
+            if (!textoBusca.includes(termo)) return false;
+        }
+        return true;
+    });
+
+    if (filtrados.length === 0) {
+       tbody.innerHTML = "<tr><td colspan='5' style='text-align:center; padding:30px; color:#94a3b8;'>Nenhum registro encontrado para esta pesquisa ou filtro.</td></tr>";
+       return;
+    }
+
+    var html = "";
+    filtrados.forEach(item => {
+      var iconeCat = item.categoria === "LUBRIFICACAO" ? '💧' : (item.categoria === "GARANTIA" ? '🛡️' : (item.categoria === "TACOGRAFO" ? '⏱️' : '⚙️'));
+      var btnPdf = item.arquivo ? `<a href="${item.arquivo}" target="_blank" title="Ver Comprovativo" style="color:#ef4444;"><i class="fa-solid fa-file-pdf"></i></a>` : '';
+
+      var acoesHtml = "";
+      if(item.isConcluido) {
+          acoesHtml = `<div style="display:flex; gap:10px; justify-content:center; align-items:center;">
+                         ${btnPdf}
+                         <span style="color:#94a3b8; font-weight:bold; font-size:11px; padding:6px 12px; border:1px solid #e2e8f0; border-radius:4px;"><i class="fa-solid fa-lock"></i> Histórico</span>
+                       </div>`;
+      } else {
+          acoesHtml = `<div style="display:flex; gap:10px; justify-content:center; align-items:center;">
+                         ${btnPdf}
+                         <button onclick="baixarManutencaoJS(${item.linha}, '${item.id}')" title="Marcar como Concluída" style="background:#10b981; border:none; color:white; cursor:pointer; padding:6px 12px; border-radius:4px; font-size:11px; font-weight:bold; box-shadow: 0 2px 4px rgba(16,185,129,0.3);"><i class="fa-solid fa-check"></i> Baixa</button>
+                       </div>`;
+      }
+
+      html += `
+        <tr style="border-bottom: 1px solid #f1f5f9; transition:0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+          <td style="padding:15px 8px; font-weight:bold; color:#1e3a8a; font-size:14px;">${item.prefixo}<br><span style="font-size:11px; font-weight:normal; color:#64748b;">${item.placa}</span></td>
+          <td style="padding:15px 8px; font-size:12px; font-weight:bold; color:#334155;">${iconeCat} ${item.categoria}<br><span style="font-size:11px; font-weight:normal;">${item.descricao}</span></td>
+          <td style="padding:15px 8px; font-size:11px; font-weight:bold; color:#64748b;">${item.infoDetalhe}</td>
+          <td style="padding:15px 8px;"><span style="background:${item.cor}20; color:${item.cor}; padding:4px 8px; border-radius:6px; font-weight:bold; font-size:11px;">${item.alertaTxt}</span></td>
+          <td style="padding:15px 8px; text-align:center;">
+            ${acoesHtml}
+          </td>
+        </tr>
+      `;
+    });
+    tbody.innerHTML = html;
+  }
+
+  // Nova Lógica para acionar o calendário
+  function baixarManutencaoJS(linha, idRegistro) {
+     // Preenche os campos ocultos do Modal
+     document.getElementById('baixa-linha').value = linha;
+     document.getElementById('baixa-id').value = idRegistro;
+     
+     // Sugere a data de hoje por padrão
+     var hojeStr = new Date().toISOString().split('T')[0];
+     document.getElementById('input-data-baixa').value = hojeStr;
+     
+     // Mostra o pop-up
+     document.getElementById('modal-data-baixa').style.display = 'flex';
+  }
+
+  // O botão verde "Salvar" do Pop-up chama esta função
+  function confirmarBaixaComData() {
+     var linha = document.getElementById('baixa-linha').value;
+     var id = document.getElementById('baixa-id').value;
+     var dataBaixa = document.getElementById('input-data-baixa').value;
+
+     if(!dataBaixa) { 
+        alert("Por favor, selecione uma data válida!"); 
+        return; 
+     }
+
+     document.getElementById('modal-data-baixa').style.display = 'none';
+
+     google.script.run.withSuccessHandler(function(res) {
+        // Se estiver dentro da central de relatórios, atualiza os dados visuais.
+        if (typeof carregarRadarManutencao === 'function') {
+           carregarRadarManutencao();
+        } else if (typeof gerarRelatoriosLote === 'function') {
+           gerarRelatoriosLote();
+        } else {
+           alert(res.mensagem);
+        }
+     }).concluirManutencaoRadarBackend(linha, id, dataBaixa);
+  }
+</script>

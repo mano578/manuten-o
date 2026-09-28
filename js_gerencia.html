@@ -1,0 +1,112 @@
+<script>
+  (function() {
+      // 1. AUTO-EJEÇÃO PARA RESOLVER O PROBLEMA DO PAINEL GERAL
+      function blindarAbaGerencia() {
+        var minhaAba = document.getElementById('gerencia-frota');
+        var mainContent = document.querySelector('.main-content');
+        
+        if (minhaAba && mainContent) {
+          // Se a aba estiver presa dentro de outra (ex: Painel Geral), move para a raiz principal
+          if (minhaAba.parentElement !== mainContent) {
+            mainContent.appendChild(minhaAba);
+          }
+        }
+
+        // Esconde imediatamente se o menu clicado não for a Gestão de Frota
+        var menuAtivo = document.querySelector('.menu-item.active');
+        if (!menuAtivo || menuAtivo.getAttribute('data-aba') !== 'gerencia-frota') {
+          if (minhaAba) minhaAba.style.display = 'none';
+        }
+
+        // 2. FORÇAR A OBEDIÊNCIA AO MENU LATERAL
+        var botoesMenu = document.querySelectorAll('.menu-item');
+        botoesMenu.forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var destino = this.getAttribute('data-aba');
+            if (destino === 'gerencia-frota') {
+              if (minhaAba) minhaAba.style.display = 'block';
+            } else {
+              if (minhaAba) minhaAba.style.display = 'none';
+            }
+          });
+        });
+      }
+
+      // Roda a blindagem 0.5s após a página carregar
+      setTimeout(blindarAbaGerencia, 500);
+
+      // Inicia o calendário com o dia de hoje
+      var inputD = document.getElementById('data-filtro-gerencia');
+      if (inputD) inputD.valueAsDate = new Date();
+      
+      // Carregamento inicial visível (falso para silencioso)
+      setTimeout(function() { carregarRelatorioGerencia(false); }, 800);
+
+      // ========================================================
+      // 🔄 3. AUTO-SINCRONIZAÇÃO INTELIGENTE E SILENCIOSA
+      // ========================================================
+      setInterval(function() {
+        var minhaAba = document.getElementById('gerencia-frota');
+        // Só atualiza os dados no fundo se a aba estiver visível na tela
+        if (minhaAba && minhaAba.style.display !== 'none') {
+          console.log("Auto-sincronizando aba Gerência Frota em background...");
+          carregarRelatorioGerencia(true); // O 'true' ativa o modo silencioso (sem piscar a tela)
+        }
+      }, 60000); // 60000 milissegundos = 60 segundos
+      
+  })();
+
+  // 4. FUNÇÃO QUE BUSCA OS DADOS (Agora aceita o modo 'silencioso')
+  function carregarRelatorioGerencia(silencioso) {
+    var tbody = document.getElementById('tbody-gerencia-frota');
+    if(!tbody) return;
+    
+    // Só exibe o "Carregando..." se NÃO estiver no modo silencioso
+    if (!silencioso) {
+      tbody.innerHTML = '<tr><td colspan="6" style="padding: 30px;"><i class="fa-solid fa-spinner fa-spin"></i> Buscando registros da data selecionada...</td></tr>';
+    }
+    
+    var dataInput = document.getElementById('data-filtro-gerencia').value;
+    if(!dataInput) return;
+    var partes = dataInput.split('-');
+    var dataFormatada = partes[2] + '/' + partes[1] + '/' + partes[0];
+
+    google.script.run.withSuccessHandler(function(lista) {
+      if (!lista || lista.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="color:#ef4444; padding: 40px;">Nenhuma medição registrada para o dia <b>${dataFormatada}</b>.<br><span style="font-size:11px; color:#64748b;">(Os checks automáticos ocorrem às 8h, 11h, 15h e 19h)</span></td></tr>`;
+        return;
+      }
+      
+      var html = '';
+      lista.forEach(function(item) {
+        html += `
+          <tr>
+            <td class="td-nome"><i class="fa-solid fa-truck" style="color:#7cb342; margin-right:8px;"></i> ${item.equipamento}</td>
+            <td>${item.check8}</td>
+            <td>${item.check11}</td>
+            <td>${item.check15}</td>
+            <td>${item.check19}</td>
+            <td class="td-media">${item.media}</td>
+          </tr>
+        `;
+      });
+      // Injeta os dados suavemente (se for modo silencioso, o usuário nem percebe que a tela atualizou)
+      tbody.innerHTML = html; 
+    }).withFailureHandler(function(erro) {
+       // Só mostra o erro se não estiver no modo silencioso, para não assustar o usuário com instabilidades momentâneas da rede
+       if (!silencioso) {
+         tbody.innerHTML = '<tr><td colspan="6" style="color:red; padding: 20px;">Erro de conexão.</td></tr>';
+       }
+    }).buscarRelatorioGerencia(dataFormatada);
+  }
+
+  // 5. FUNÇÃO PARA FORÇAR O CHECK AGORA (Opcional)
+  function forcarCheckAgora() {
+    var tbody = document.getElementById('tbody-gerencia-frota');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="padding: 30px;"><i class="fa-solid fa-spinner fa-spin"></i> Gravando e calculando agora...</td></tr>';
+    google.script.run.withSuccessHandler(function(res) {
+       alert(res.msg);
+       carregarRelatorioGerencia(false); // Atualiza mostrando o carregamento após forçar
+    }).registrarCheckDiarioFrotaAutonomo();
+  }
+</script>

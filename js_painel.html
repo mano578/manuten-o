@@ -1,0 +1,256 @@
+<script>
+  // ================= PAINEL GERAL =================
+  function atualizarPainelPlanilha() { 
+    google.script.run.withSuccessHandler(renderizarVeiculos).obterResumoDaFrota(); 
+  }
+  
+  function gerarBlocoVeiculos(lista, classeEstilo) { 
+    if (!lista || lista.length === 0) return '<div style="color:#94a3b8; font-size:13px; padding:10px;">Nenhum veículo.</div>'; 
+    return '<ul class="lista-veiculos ' + classeEstilo + '">' + lista.map(v => '<li class="veiculo-item">'+v+'</li>').join('') + '</ul>'; 
+  }
+  
+  function renderizarVeiculos(dados) {
+    var container = document.getElementById('container-frota-dinamica'); if (!container || !dados || dados.length === 0) return;
+    var html = '';
+    for (var i = 0; i < dados.length; i++) {
+      var op = dados[i]; html += '<div style="margin-bottom:35px;"><h2 style="font-size:18px; margin-bottom:15px; color:#334155;">🏢 ' + op.nome + '</h2><div class="painel-colunas"><div class="coluna-status borda-verde"><div class="topo-coluna"><span style="color:#059669; font-weight:700;">LIBERADOS</span><span class="contador">' + op.liberados.length + '</span></div>' + gerarBlocoVeiculos(op.liberados, 'lado-liberado') + '</div><div class="coluna-status borda-vermelha"><div class="topo-coluna"><span style="color:#dc2626; font-weight:700;">RETIDOS</span><span class="contador">' + op.retidos.length + '</span></div>' + gerarBlocoVeiculos(op.retidos, 'lado-retido') + '</div></div></div>';
+    }
+    container.innerHTML = html;
+  }
+  // ================= 2. DESENHA A ESTRUTURA DAS 3 COLUNAS =================
+  function renderizarPainelGeralCom3Colunas(dadosBackend) {
+    var container = document.getElementById('container-frota-dinamica');
+    if(!container) return;
+
+    var html = "";
+
+    dadosBackend.forEach(centro => {
+      if(!centro) return;
+
+      html += `
+        <div style="margin-bottom: 40px;">
+          <h3 style="color: #334155; margin-bottom: 15px; font-size: 18px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; font-weight: 700;">
+            <i class="fa-solid fa-building"></i> ${centro.nome}
+          </h3>
+          
+          <div class="grid-painel-3">
+            <div class="box-status box-liberados">
+              <div class="header-box" style="color: #10b981;">
+                <span>LIBERADOS</span><span>${(centro.liberados || []).length}</span>
+              </div>
+              <div>${gerarChipsVeiculos(centro.liberados, 'liberado')}</div>
+            </div>
+
+            <div class="box-status box-retidos">
+              <div class="header-box" style="color: #ef4444;">
+                <span>RETIDO - O.S.</span><span>${(centro.retidosOS || []).length}</span>
+              </div>
+              <div>${gerarChipsVeiculos(centro.retidosOS, 'os')}</div>
+            </div>
+
+            <div class="box-status box-sos">
+              <div class="header-box" style="color: #f59e0b;">
+                <span>S.O.S</span><span>${(centro.retidosSOS || []).length}</span>
+              </div>
+              <div>${gerarChipsVeiculos(centro.retidosSOS, 'sos')}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    container.innerHTML = html;
+  }
+
+
+ // ================= VARIÁVEIS DE CONTROLE GLOBAL =================
+  let veiculoAtivoNoPainel = "";
+  let intervaloPainelGeral = null;
+
+  // ================= 1. CARREGAMENTO INTELIGENTE (NORMAL OU SILENCIOSO) =================
+  function carregarDadosPainelGeral(isSilencioso = false) {
+    var container = document.getElementById('container-frota-dinamica');
+    if (!container) return;
+
+    // Se NÃO for silencioso (primeiro carregamento), mostra o aviso visual
+    if (!isSilencioso) {
+       container.innerHTML = '<div class="vazio-msg" style="text-align:center; padding:30px; color:#64748b; font-weight:bold;"><i class="fa-solid fa-spinner fa-spin"></i> A sincronizar dados com a nuvem...</div>';
+    }
+
+    google.script.run
+      .withSuccessHandler(function(dados) {
+        if (!dados || dados.length === 0) {
+          if (!isSilencioso) {
+             container.innerHTML = '<p style="text-align:center; padding:20px; color:#94a3b8;">Nenhum dado retornado do servidor.</p>';
+          }
+          return;
+        }
+        // Sobrescreve a tela de forma limpa e invisível
+        renderizarPainelGeralCom3Colunas(dados);
+      })
+      .withFailureHandler(function(erro) {
+        console.error("Erro na sincronização em segundo plano: ", erro);
+        // Só exibe o erro visual se a tela estiver vazia ou não for silencioso
+        if (!isSilencioso) {
+           container.innerHTML = '<p style="color:red; text-align:center; padding:20px; font-weight:bold;">❌ Erro ao sincronizar: ' + erro + '</p>';
+        }
+      })
+      .obterResumoDaFrota();
+  }
+
+// ================= 3. DESENHA OS VEÍCULOS (CHIPS) =================
+  // 🆕 Escapa aspas/HTML do texto do defeito/descrição antes de colocar no atributo data-msg
+  function escaparTextoBalao(texto) {
+    return String(texto || "")
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function gerarChipsVeiculos(lista, tipoAlerta) {
+    if(!lista || lista.length === 0) return '<span style="color:#94a3b8; font-size:12px; font-style:italic;">Nenhum veículo.</span>';
+    return lista.map(v => {
+      // 🆕 Balão/tooltip: RETIDO-O.S. mostra o defeito/relato da O.S. aberta; S.O.S mostra a descrição do chamado
+      var textoBalao = "";
+      if (tipoAlerta === 'os' && v.defeito) textoBalao = "🔧 Defeito/Relato: " + v.defeito;
+      else if (tipoAlerta === 'sos' && v.descricao) textoBalao = "🆘 Descrição: " + v.descricao;
+
+      var atributosBalao = textoBalao
+        ? ` data-msg="${escaparTextoBalao(textoBalao)}" onmouseenter="exibirBalaoChip(event,this)" onmouseleave="esconderBalaoChip()" ontouchstart="exibirBalaoChip(event,this)" ontouchend="esconderBalaoChip()" ontouchcancel="esconderBalaoChip()"`
+        : "";
+
+      return `<div class="chip-veiculo" ${atributosBalao} onclick="abrirAcoesVeiculo('${v.prefixo}')">${v.prefixo} | ${v.placa}</div>`;
+    }).join('');
+  }
+
+  // ================= 3.1 BALÃO/TOOLTIP FLUTUANTE (MOUSE E TOQUE) =================
+  // Mostra o defeito/relato (RETIDO-O.S.) ou a descrição (S.O.S) sem precisar clicar para entrar no veículo
+  function exibirBalaoChip(evento, elemento) {
+    var msg = elemento.getAttribute('data-msg');
+    if (!msg) return;
+    var balao = document.getElementById('balao-tooltip-painel');
+    if (!balao) return;
+
+    balao.innerText = msg;
+    balao.style.display = 'block';
+
+    var pontoX, pontoY;
+    if (evento.touches && evento.touches.length > 0) {
+      pontoX = evento.touches[0].clientX;
+      pontoY = evento.touches[0].clientY;
+    } else {
+      pontoX = evento.clientX;
+      pontoY = evento.clientY;
+    }
+
+    // Ajusta a posição para não vazar da tela (largura/borda direita e base)
+    var larguraBalao = balao.offsetWidth || 240;
+    var alturaBalao = balao.offsetHeight || 40;
+    var posX = Math.min(pontoX + 12, window.innerWidth - larguraBalao - 10);
+    var posY = Math.max(pontoY - alturaBalao - 14, 10);
+
+    balao.style.left = posX + 'px';
+    balao.style.top = posY + 'px';
+  }
+
+  function esconderBalaoChip() {
+    var balao = document.getElementById('balao-tooltip-painel');
+    if (balao) balao.style.display = 'none';
+  }
+
+  // ================= 4. AÇÕES INTERATIVAS DO MODAL =================
+  function abrirAcoesVeiculo(prefixo) {
+    veiculoAtivoNoPainel = prefixo;
+    var lbl = document.getElementById('lbl-veiculo-acao');
+    if(lbl) lbl.innerText = prefixo;
+    
+    var modal = document.getElementById('modal-acoes-painel');
+    if(modal) modal.style.display = 'flex';
+  }
+
+  function redirecionarPara(abaAlvo) {
+    document.getElementById('modal-acoes-painel').style.display = 'none';
+    if(typeof alternarAba === 'function') alternarAba(abaAlvo);
+    
+    setTimeout(() => {
+      var inputPrefixoOS = document.getElementById('os-prefixo-input'); 
+      if(inputPrefixoOS) inputPrefixoOS.value = veiculoAtivoNoPainel;
+    }, 500);
+  }
+
+
+  // ================= 5. INTERFACE DE LIBERAÇÃO RÁPIDA (COM DETETOR DE FALHAS) =================
+  function iniciarLiberacaoVeiculo() {
+    if (!veiculoAtivoNoPainel) {
+      alert("❌ Erro: Nenhum veículo foi selecionado na memória da tela.");
+      return;
+    }
+
+    document.getElementById('botoes-acao-veiculo').style.display = 'none';
+    document.getElementById('loading-analise-veiculo').style.display = 'block';
+
+    console.log("Iniciando varredura para o veículo: " + veiculoAtivoNoPainel);
+
+    // CHAMADA 1: Analisa O.S. e S.O.S abertos
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res.temPendencia) {
+           var confirma = confirm(`⚠️ ATENÇÃO: O veículo ${veiculoAtivoNoPainel} tem pendências!\n\nEncontramos:\n${res.msgPendencias}\n\nDeseja fechar automaticamente essas pendências e marcar como DEVOLVIDO?`);
+           if (!confirma) {
+              document.getElementById('botoes-acao-veiculo').style.display = 'block';
+              document.getElementById('loading-analise-veiculo').style.display = 'none';
+              return;
+           }
+        }
+        
+        console.log("Enviando comando de liberação forçada ao servidor...");
+
+        // CHAMADA 2: Escreve "LIBERADO" e fecha tudo
+        google.script.run
+          .withSuccessHandler(function(respostaFinal) {
+             document.getElementById('botoes-acao-veiculo').style.display = 'block';
+             document.getElementById('loading-analise-veiculo').style.display = 'none';
+             
+             alert(respostaFinal.mensagem);
+             document.getElementById('modal-acoes-painel').style.display = 'none';
+             carregarDadosPainelGeral(true); // Atualiza o painel silenciosamente
+          })
+          .withFailureHandler(function(erroServidor2) {
+             document.getElementById('botoes-acao-veiculo').style.display = 'block';
+             document.getElementById('loading-analise-veiculo').style.display = 'none';
+             alert("❌ Erro no Passo de Gravação: " + erroServidor2.toString());
+          })
+          .efetivarLiberacaoVeiculoBackend(veiculoAtivoNoPainel);
+
+      })
+      .withFailureHandler(function(erroServidor1) {
+         document.getElementById('botoes-acao-veiculo').style.display = 'block';
+         document.getElementById('loading-analise-veiculo').style.display = 'none';
+         alert("❌ Erro no Passo de Análise de Pendências: " + erroServidor1.toString());
+      })
+      .analisarPendenciasVeiculoBackend(veiculoAtivoNoPainel);
+  }
+
+  // ================= CONFIGURAÇÃO DO CRONÔMETRO DE ATUALIZAÇÃO =================
+  function inicializarCronometroPainel() {
+    // Evita duplicar cronômetros caso mude de aba
+    if (intervaloPainelGeral) clearInterval(intervaloPainelGeral);
+    
+    // Executa o carregamento inicial visível
+    carregarDadosPainelGeral(false);
+
+    // 🔥 Ativa o loop automático invisível a cada 20 segundos (20000ms) 🔥
+    intervaloPainelGeral = setInterval(function() {
+      // Verifica se a tela do Painel Geral está visível antes de gastar internet
+      var painelDiv = document.getElementById('aba-painel-geral'); // Ajuste se o ID da sua aba pai for diferente
+      if (!painelDiv || painelDiv.style.display !== 'none') {
+         carregarDadosPainelGeral(true); // Envia true para ser silencioso!
+      }
+    }, 20000);
+  }
+
+  // Inicia o motor automaticamente ao carregar a página
+  setTimeout(inicializarCronometroPainel, 600);
+</script>

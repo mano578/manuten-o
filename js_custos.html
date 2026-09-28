@@ -1,0 +1,409 @@
+<script>
+  // ================= CUSTOS FROTA (FRAÇÃO E MULTIPLOS ITENS POR VEÍCULO) =================
+  function abrirModalNovoCusto() {
+    document.getElementById('modal-novo-custo').style.display = 'flex';
+    var now = new Date(); var tzOffset = now.getTimezoneOffset() * 60000;
+    
+    var campoData = document.getElementById('custo-data');
+    if(campoData) campoData.value = (new Date(now - tzOffset)).toISOString().slice(0,10);
+    
+    var busca = document.getElementById('busca-veiculo-custo');
+    if(busca) busca.value = '';
+    
+    preencherCheckboxesVeiculosCusto();
+    setTimeout(recalcularTotaisRateio, 300); // Força zerar os totais ao abrir
+  }
+
+  function preencherCheckboxesVeiculosCusto() {
+    var div = document.getElementById('lista-checkbox-veiculos-custo');
+    if(!frotaGlobal || frotaGlobal.length === 0) {
+      div.innerHTML = '<div class="vazio-msg">Aguarde o carregamento da frota ou cadastre um veículo.</div>'; return;
+    }
+    var listaOrdenada = frotaGlobal.slice().sort((a,b) => a.prefixo.localeCompare(b.prefixo));
+    var html = '';
+    for(var i=0; i<listaOrdenada.length; i++) {
+      let safePrefixo = listaOrdenada[i].prefixo.replace(/[^a-zA-Z0-9]/g, '_');
+      
+      html += '<div class="check-item-escala item-veiculo-custo" style="flex-direction: column; align-items: stretch; gap: 5px;">';
+      html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
+      // GATILHO ONCHANGE: Avisa o cálculo se desmarcar o caminhão
+      html += '<label><input type="checkbox" class="chk-veiculo-custo" value="' + listaOrdenada[i].prefixo + '" data-placa="' + listaOrdenada[i].placa + '" data-safeprefixo="'+safePrefixo+'" onchange="toggleVeiculoCusto(this, \'' + safePrefixo + '\')"> ' + listaOrdenada[i].prefixo + ' <span class="funcao-badge">' + listaOrdenada[i].placa + '</span></label>';
+      html += '</div>';
+      
+      html += '<div id="container-itens-custo-' + safePrefixo + '" style="display:none; background:#f1f5f9; padding:10px; border-radius:6px; margin-top:5px; border-left:3px solid #3b82f6;">';
+      html += '<div id="lista-itens-' + safePrefixo + '">';
+      html += gerarHtmlItemCusto(); // Insere a primeira linha
+      html += '</div>';
+      html += '<button type="button" style="background:none; border:none; color:#0284c7; font-size:12px; font-weight:600; cursor:pointer; margin-top:8px;" onclick="adicionarItemCusto(\''+safePrefixo+'\')">➕ Adicionar Outro Serviço/Produto</button>';
+      html += '</div>';
+      html += '</div>';
+    }
+    div.innerHTML = html;
+    recalcularTotaisRateio(); 
+  }
+
+  function gerarHtmlItemCusto() {
+    return `
+    <div class="linha-item-custo" style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
+      <input type="text" class="input-servico-item" placeholder="Peça/Serviço (Ex: Filtro)" style="flex: 2; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
+      
+      <select class="input-tipo-custo-item" style="flex: 1; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; background: white;">
+        <option value="" disabled selected>Tipo...</option>
+        <option value="PEÇAS">PEÇAS</option>
+        <option value="SERVIÇO">SERVIÇO</option>
+        <option value="LUBRIFICANTE">LUBRIFICANTE</option>
+        <option value="PNEU">PNEU</option>
+      </select>
+      
+      <input type="number" step="0.01" class="input-valor-item" placeholder="R$ 0.00" oninput="recalcularTotaisRateio()" style="flex: 1; max-width: 100px; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
+      
+      <button type="button" onclick="removerLinhaServico(this)" style="background: none; border: none; color: #ef4444; font-weight: bold; cursor: pointer; font-size: 18px; padding: 0 5px;" title="Remover item">✖</button>
+    </div>`;
+  }
+
+  function adicionarItemCusto(safePrefixo) {
+    document.getElementById('lista-itens-' + safePrefixo).insertAdjacentHTML('beforeend', gerarHtmlItemCusto());
+    recalcularTotaisRateio();
+  }
+
+  function removerLinhaServico(btn) {
+    var container = btn.parentElement.parentElement;
+    if(container.children.length > 1) { 
+      // Se tiver mais de uma linha, exclui a linha
+      btn.parentElement.remove(); 
+    } else { 
+      // Se for a última, apenas limpa os campos para não desaparecer
+      btn.parentElement.querySelector('.input-servico-item').value = ''; 
+      btn.parentElement.querySelector('.input-tipo-custo-item').value = ''; 
+      btn.parentElement.querySelector('.input-valor-item').value = ''; 
+    }
+    recalcularTotaisRateio(); // Atualiza o cabeçalho imediatamente
+  }
+
+  function toggleVeiculoCusto(checkbox, safePrefixo) {
+    let container = document.getElementById('container-itens-custo-' + safePrefixo);
+    if(checkbox.checked) { 
+      container.style.display = 'block'; 
+    } else { 
+      container.style.display = 'none'; 
+      let inputsCost = container.querySelectorAll('.input-valor-item');
+      inputsCost.forEach(inp => inp.value = ''); // Zera os valores do caminhão desmarcado
+    }
+    recalcularTotaisRateio();
+  }
+
+  function filtrarVeiculosCusto() {
+    let termo = document.getElementById('busca-veiculo-custo').value.toUpperCase();
+    let itens = document.querySelectorAll('.item-veiculo-custo');
+    itens.forEach(item => {
+      let texto = item.querySelector('label').innerText.toUpperCase();
+      if(texto.indexOf(termo) > -1) { item.style.display = 'flex'; } 
+      else { item.style.display = 'none'; }
+    });
+  }
+
+  // O CÉREBRO MATEMÁTICO: Soma apenas o que está marcado e calcula a diferença
+  function recalcularTotaisRateio() {
+    var inputTotalNF = document.getElementById('custo-nf-total') || document.getElementById('custo-total') || document.getElementById('nf-valor'); 
+    var totalNF = inputTotalNF ? parseFloat(inputTotalNF.value) || 0 : 0;
+    
+    var totalLancado = 0;
+    
+    // Procura apenas os veículos que estão marcados
+    var checks = document.querySelectorAll('.chk-veiculo-custo:checked');
+    checks.forEach(function(chk) {
+      let safePrefixo = chk.getAttribute('data-safeprefixo');
+      let containerItens = document.getElementById('lista-itens-' + safePrefixo);
+      if (containerItens) {
+        let inputsValores = containerItens.querySelectorAll('.input-valor-item');
+        inputsValores.forEach(function(input) {
+          totalLancado += (parseFloat(input.value) || 0);
+        });
+      }
+    });
+    
+    var resta = totalNF - totalLancado;
+    
+    var painelTexto = document.getElementById('texto-totais-rateio') || document.getElementById('resumo-rateio');
+    if (painelTexto) {
+      if (totalNF === 0) {
+        painelTexto.innerHTML = `Aguardando valor total da NF...`; 
+        painelTexto.style.color = '#475569';
+      } else {
+        painelTexto.innerHTML = `Total NF: <b>R$ ${totalNF.toFixed(2)}</b> | Peças/Serviços: <b>R$ ${totalLancado.toFixed(2)}</b> | Resta: <b>R$ ${resta.toFixed(2)}</b>`;
+        if (resta < -0.02) { painelTexto.style.color = '#ef4444'; }
+        else if (Math.abs(resta) <= 0.02) { painelTexto.style.color = '#10b981'; } 
+        else { painelTexto.style.color = '#b45309'; }
+      }
+    }
+  }
+
+  function enviarFormularioCusto(event) {
+    event.preventDefault();
+    
+    // 1. Verifica Veículos
+    var checks = document.querySelectorAll('.chk-veiculo-custo:checked');
+    if(checks.length === 0) return alert("Por favor, selecione ao menos um veículo marcando a caixinha ao lado do Prefixo!");
+    
+    // 2. Verifica a Matemática
+    var inputTotal = document.getElementById('custo-nf-total') || document.getElementById('custo-total') || document.getElementById('nf-valor');
+    var totalNota = parseFloat(inputTotal.value) || 0;
+    var somaAtribuida = 0;
+    var veiculosSelecionados = [];
+    var erroVazio = false;
+
+    // 3. Monta o pacote de dados com o novo select de TIPO
+    checks.forEach(function(c) {
+      let safePrefixo = c.getAttribute('data-safeprefixo');
+      let itensHtml = document.getElementById('lista-itens-' + safePrefixo).querySelectorAll('.linha-item-custo');
+      let itensDoVeiculo = [];
+      
+      itensHtml.forEach(linha => {
+        let servicoStr = linha.querySelector('.input-servico-item').value;
+        let tipoStr = linha.querySelector('.input-tipo-custo-item').value;
+        let valorFloat = parseFloat(linha.querySelector('.input-valor-item').value);
+        
+        if(servicoStr && tipoStr && !isNaN(valorFloat) && valorFloat > 0) {
+          somaAtribuida += valorFloat;
+          itensDoVeiculo.push({ servico: servicoStr, tipo: tipoStr, valor: valorFloat });
+        } else if (servicoStr || tipoStr || (!isNaN(valorFloat) && valorFloat > 0)) {
+          erroVazio = true; // Se preencheu só metade da linha, barra o salvamento
+        }
+      });
+      
+      if(itensDoVeiculo.length > 0) { veiculosSelecionados.push({ prefixo: c.value, placa: c.getAttribute('data-placa'), itens: itensDoVeiculo }); } 
+      else { erroVazio = true; } 
+    });
+
+    if(erroVazio) return alert("Erro: Preencha todos os campos da linha (Peça, Tipo e Valor) para os veículos selecionados.");
+
+    if (Math.abs(totalNota - somaAtribuida) > 0.02) {
+      return alert(`Atenção: O total das peças e serviços (R$ ${somaAtribuida.toFixed(2)}) não bate com a NF (R$ ${totalNota.toFixed(2)}).\nO valor 'Resta' precisa estar zerado!`);
+    }
+
+    var fornecedorInput = document.getElementById('custo-nf-fornecedor') || document.getElementById('custo-fornecedor');
+    var nfInput = document.getElementById('custo-nf') || document.getElementById('custo-nf-numero');
+    
+    var dados = {
+      fornecedor: fornecedorInput ? fornecedorInput.value : "-",
+      data: document.getElementById('custo-data').value,
+      notaFiscal: nfInput ? nfInput.value : "-",
+      descricao: "", // Deixamos vazio pois o campo foi removido a seu pedido
+      veiculosSelecionados: veiculosSelecionados
+    };
+
+    var btn = document.getElementById('btn-submit-custo') || document.querySelector('#formCusto button[type="submit"]'); 
+    var textElem = btn ? btn.querySelector('.btn-text') : null;
+    var txtOrig = textElem ? textElem.innerText : (btn ? btn.innerText : "Salvar");
+
+    if(btn) { btn.classList.add('carregando'); btn.disabled = true; }
+    if(textElem) { textElem.innerText = "Validando & Salvando..."; } else if(btn) { btn.innerText = "Validando & Salvando..."; }
+
+    // Envia para o Backend
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      if(res.sucesso) { 
+          var form = document.getElementById('formCusto');
+          if(form) form.reset(); 
+          if(typeof fecharModal === 'function') fecharModal('modal-novo-custo'); 
+          if(typeof carregarHistoricoCustos === 'function') carregarHistoricoCustos(); 
+          let painel = document.getElementById('texto-totais-rateio') || document.getElementById('resumo-rateio');
+          if(painel) painel.innerText = "Aguardando valor total da NF..."; 
+      }
+      if(btn) { btn.classList.remove('carregando'); btn.disabled = false; }
+      if(textElem) { textElem.innerText = txtOrig; } else if(btn) { btn.innerText = txtOrig; }
+    }).withFailureHandler(function(err){
+      alert("❌ Falha de comunicação com o servidor: " + err);
+      if(btn) { btn.classList.remove('carregando'); btn.disabled = false; }
+      if(textElem) { textElem.innerText = txtOrig; } else if(btn) { btn.innerText = txtOrig; }
+    }).salvarCustoForm(dados);
+  }
+
+  // ================= HISTÓRICO E EDIÇÃO DE CUSTOS =================
+  var custosGlobais = [];
+
+  function carregarHistoricoCustos() {
+    var tbody = document.getElementById('tbody-lista-custos');
+    if (!tbody) return;
+    
+    if (!custosGlobais || custosGlobais.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#64748b; font-style:italic;">⏳ Sincronizando registros com a planilha...</td></tr>';
+    }
+    
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (!res.sucesso) return;
+        custosGlobais = res.dados; 
+        renderizarTabelaCustos(custosGlobais.slice(0, 50)); 
+      })
+      .listarCustosBackend();
+  }
+
+  window.addEventListener('load', function() {
+    if (typeof carregarHistoricoCustos === 'function') {
+      carregarHistoricoCustos();
+    }
+  });
+
+  function renderizarTabelaCustos(lista) {
+    var tbody = document.getElementById('tbody-lista-custos');
+    if (!tbody) return;
+    if (lista.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#64748b;">Nenhum custo registrado encontrado.</td></tr>';
+      return;
+    }
+
+    var html = '';
+    lista.forEach(c => {
+      var valorFormatado = "R$ " + c.valor.toFixed(2);
+      var infoExtra = c.descricao || "-";
+      
+      html += `
+        <tr onclick="exibirEspelhoCusto(${c.rowIndex})" style="cursor:pointer; border-bottom: 1px solid #e2e8f0; transition: background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+          <td style="padding:11px; font-weight:bold; color:#475569; font-size:12px;">${c.id}</td>
+          <td style="padding:11px; font-size:12px; color:#334155;">${c.data}</td>
+          <td style="padding:11px; font-weight:bold; color:#1e3a8a; font-size:12px;">${c.prefixo}</td>
+          <td style="padding:11px; font-size:12px;">
+            <span style="background:#e0f2fe; color:#0369a1; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:600; display:inline-block;">
+              ${c.tipo} </span>
+          </td>
+          <td style="padding:11px; color:#b91c1c; font-weight:600; font-size:12px;">${valorFormatado}</td>
+          <td style="padding:11px; font-size:11px; color:#64748b; max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            ${infoExtra}
+          </td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+  }
+
+  function filtrarCustos() {
+    var termo = document.getElementById('busca-custo').value.toLowerCase().trim();
+    
+    if (termo === "") {
+      renderizarTabelaCustos(custosGlobais.slice(0, 50));
+      return;
+    }
+    
+    var filtrados = custosGlobais.filter(c => 
+      (c.id && c.id.toLowerCase().includes(termo)) || 
+      (c.prefixo && c.prefixo.toLowerCase().includes(termo)) || 
+      (c.tipo && c.tipo.toLowerCase().includes(termo)) ||
+      (c.fornecedor && c.fornecedor.toLowerCase().includes(termo)) ||
+      (c.descricao && c.descricao.toLowerCase().includes(termo)) ||
+      (c.notaFiscal && String(c.notaFiscal).toLowerCase().includes(termo))
+    );
+    
+    renderizarTabelaCustos(filtrados);
+  }
+
+  function exibirEspelhoCusto(rowIndex) {
+    var c = custosGlobais.find(x => x.rowIndex === rowIndex);
+    if (!c) return alert("Erro ao carregar ficha do custo.");
+
+    document.getElementById('view-custo-id-titulo').innerText = c.id;
+    document.getElementById('view-custo-id').innerText = c.id;
+    document.getElementById('view-custo-data').innerText = c.data;
+    document.getElementById('view-custo-prefixo').innerText = c.prefixo;
+    document.getElementById('view-custo-tipo').innerText = c.tipo; 
+    document.getElementById('view-custo-valor').innerText = "R$ " + c.valor.toFixed(2);
+
+    document.getElementById('view-custo-fornecedor').innerText = c.fornecedor || "-";
+    document.getElementById('view-custo-nf').innerText = c.notaFiscal || "-";
+    document.getElementById('view-custo-desc').innerText = c.descricao || "-";
+
+    var btnExcluir = document.getElementById('btn-custo-excluir');
+    if (btnExcluir) {
+      btnExcluir.onclick = function() {
+        if (confirm("⚠️ ATENÇÃO!\nDeseja mesmo eliminar permanentemente o Custo " + c.id + "?")) {
+          fecharModal('modal-detalhes-custo');
+          google.script.run.withSuccessHandler(function(res) {
+            alert(res.mensagem);
+            carregarHistoricoCustos();
+          }).excluirCustoBackend(c.rowIndex);
+        }
+      };
+    }
+
+    var btnEditar = document.getElementById('btn-custo-editar');
+    if (btnEditar) {
+      btnEditar.onclick = function() {
+        fecharModal('modal-detalhes-custo');
+        abrirModalEditarCusto(c);
+      };
+    }
+
+    document.getElementById('modal-detalhes-custo').style.display = 'flex';
+  }
+
+  function abrirModalEditarCusto(c) {
+    document.getElementById('edit-custo-linha').value = c.rowIndex;
+    document.getElementById('edit-custo-id').value = c.id; // Apenas exibição — campo bloqueado, não é enviado ao salvar
+    document.getElementById('edit-custo-prefixo').value = c.prefixo;
+    document.getElementById('edit-custo-placa').value = c.placa;
+    document.getElementById('edit-custo-tipo').value = c.tipo;
+    document.getElementById('edit-custo-valor').value = c.valor;
+    document.getElementById('edit-custo-fornecedor').value = c.fornecedor || "";
+    document.getElementById('edit-custo-nf').value = c.notaFiscal || "";
+    document.getElementById('edit-custo-desc').value = c.descricao;
+
+    if (c.data && c.data.includes("/")) {
+      var partes = c.data.split("/");
+      document.getElementById('edit-custo-data').value = partes[2] + "-" + partes[1] + "-" + partes[0];
+    }
+
+    // 🆕 Popula o datalist do veículo (busca por prefixo ou placa), igual à Ordem de Serviço
+    var datalistEdit = document.getElementById('lista-veiculos-editar-custo');
+    if (typeof frotaGlobal !== 'undefined' && datalistEdit) {
+      var htmlFrota = '';
+      frotaGlobal.slice().sort((a,b) => a.prefixo.localeCompare(b.prefixo)).forEach(v => {
+        htmlFrota += `<option value="${v.prefixo}">${v.placa}</option>`;
+      });
+      datalistEdit.innerHTML = htmlFrota;
+    }
+
+    document.getElementById('modal-editar-custo').style.display = 'flex';
+  }
+
+  // 🆕 Auto-preenche a placa ao escolher/digitar o prefixo no modal de edição de Custos
+  function preencherPlacaEdicaoCusto(prefixoEscolhido) {
+    var inputPlaca = document.getElementById('edit-custo-placa');
+    if (!inputPlaca) return;
+    if (typeof frotaGlobal !== 'undefined') {
+      var veiculo = frotaGlobal.find(v => v.prefixo === prefixoEscolhido);
+      if (veiculo) inputPlaca.value = veiculo.placa;
+    }
+  }
+
+  function enviarEdicaoCusto(event) {
+    event.preventDefault();
+    
+    var linha = document.getElementById('edit-custo-linha').value;
+
+    // 🔒 O ID é único e nunca é alterado por aqui — o campo fica bloqueado só para consulta
+    var dados = {
+      data: document.getElementById('edit-custo-data').value,
+      prefixo: document.getElementById('edit-custo-prefixo').value,
+      placa: document.getElementById('edit-custo-placa').value,
+      tipo: document.getElementById('edit-custo-tipo').value,
+      valor: document.getElementById('edit-custo-valor').value,
+      fornecedor: document.getElementById('edit-custo-fornecedor').value,
+      notaFiscal: document.getElementById('edit-custo-nf').value,
+      descricao: document.getElementById('edit-custo-desc').value
+    };
+
+    var btn = event.submitter || document.querySelector('#formEditarCusto button[type="submit"]');
+    btn.innerText = "⏳ A gravar alterações..."; btn.disabled = true;
+
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      if (res.sucesso) {
+        fecharModal('modal-editar-custo');
+        carregarHistoricoCustos();
+      }
+      btn.innerText = "Salvar Alterações"; btn.disabled = false;
+    }).withFailureHandler(function(erro) {
+      alert("❌ Falha de comunicação com o servidor. Tente salvar novamente.");
+      btn.innerText = "Salvar Alterações"; btn.disabled = false;
+    }).atualizarCustoBackend(linha, dados);
+  }
+</script>

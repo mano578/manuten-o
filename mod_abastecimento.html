@@ -1,0 +1,151 @@
+<div id="aba-abastecimento" class="aba-tela" style="display:none;">
+  <h1 class="titulo-tela">⛽ Gestão de Abastecimento</h1>
+  
+  <div style="background: #ffffff; padding: 20px; border-radius: 10px; border: 1px solid #e2e8f0; margin-bottom: 25px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+    
+    <div style="display: grid; grid-template-columns: 1fr 220px; gap: 15px; align-items: center; margin-bottom: 15px;">
+      <input type="text" id="busca-abastecimento" placeholder="🔍 Buscar por prefixo, placa, combustível ou centro de custo..." onkeyup="filtrarAbastecimentos()" style="width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box; font-size: 14px; outline: none; background: #f8fafc;">
+      <button class="btn-salvar" style="width: 100%; margin: 0; padding: 12px; font-size: 14px; background: #3b82f6; border-radius: 8px;" onclick="abrirModalNovoAbastecimento()">➕ Inserir Manualmente</button>
+    </div>
+    
+    <div style="border-top: 1px solid #e2e8f0; padding-top: 12px;">
+      <p style="color:#1e293b; font-size:14px; margin-bottom: 4px; font-weight: 700;">Lançamento Unificado de Abastecimentos</p>
+      <p style="color:#64748b; font-size:12px; margin-bottom: 0;">Insira registros manualmente ou importe o arquivo Excel gerencial extraído do posto.</p>
+    </div>
+  </div>
+
+  <div class="admin-card" style="margin-bottom: 25px;">
+    <h3 style="color:#0284c7; border-bottom: 2px solid #e0f2fe; padding-bottom: 8px; margin-bottom: 15px;">🤖 Importador de Planilha de Abastecimento</h3>
+    <p style="font-size:12px; color:#64748b; margin-bottom:15px;">Selecione o arquivo Excel exportado do sistema do posto. O sistema extrairá todas as colunas automaticamente.</p>
+    <div class="input-group">
+      <input type="file" id="input-abastecimento-massa" accept=".xlsx,.xls,.csv" onchange="processarArquivosAbastecimentoMassa(event)" style="background:#f8fafc; padding:10px; width: 100%; border: 1px dashed #cbd5e1; border-radius: 6px; box-sizing: border-box;">
+    </div>
+    <div id="status-leitor-massa" class="status-ocr" style="margin-top:10px; display: none; font-weight: bold; color: #b45309;">Aguardando seleção do arquivo...</div>
+  </div>
+
+  <div id="container-preview-abastecimento" style="display:none; margin-bottom: 30px;">
+    <h3 style="font-size:16px; font-weight:700; color:#1e293b; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      📋 Conferência de Dados Lidos
+      <button class="btn-salvar" id="btn-gravar-lote-abs" style="width:auto; padding:8px 15px; font-size:13px; background:#10b981;" onclick="gravarLoteAbastecimentoVerificado()">💾 Inserir Dados do Arquivo Carregado</button>
+    </h3>
+    <div class="table-wrapper">
+      <table class="tabela-dados" style="font-size: 11px;">
+        <thead>
+          <tr>
+            <th>ID</th><th>VEICULO</th><th>PLACA CADASTRADA</th><th>DATA</th><th>COMBUSTÍVEL</th>
+            <th># LITROS</th><th>V. LITRO</th><th>VALOR TOTAL</th><th>KM</th><th># KM TOTAL</th>
+            <th># KM / LITRO</th><th># LITRO / KM</th><th>R$ / KM</th><th>CENTRO DE CUSTO</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-preview-abastecimento"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <h3 style="font-size:16px; font-weight:700; color:#1e293b; margin-bottom:10px;">🗃️ Histórico (ABASTECIMENTO_FROTA)</h3>
+  <div class="table-wrapper">
+    <table class="tabela-dados">
+      <thead>
+        <tr><th>ID</th><th>Veículo / Placa</th><th>Data</th><th>Combustível</th><th>Litros</th><th>V. Total</th><th>Centro de Custo</th></tr>
+      </thead>
+      <tbody id="tbody-historico-abastecimento">
+        <tr><td colspan="7" class="vazio-msg" style="text-align: center; padding: 20px;">A sincronizar banco de dados...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-novo-abastecimento" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 9999;">
+  <div class="modal-box" style="background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 650px; max-height: 90vh; overflow-y: auto;">
+    <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">
+      <h2 style="font-size: 18px; color: #1e293b; margin: 0;">⛽ Adicionar Abastecimento Manual</h2>
+      <button style="background: none; border: none; font-size: 24px; cursor: pointer; color: #64748b;" onclick="fecharModal('modal-novo-abastecimento')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="formAbastecimento" onsubmit="enviarFormularioAbastecimento(event)">
+        <div class="form-row" style="display: flex; gap: 15px; margin-bottom: 15px;">
+          <div class="input-group" style="flex: 1;"><label style="display: block; font-size: 12px; margin-bottom: 5px; color: #475569; font-weight: bold;">Data e Hora *</label><input type="date" name="data" id="abs-data" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;" required></div>
+          <div class="input-group" style="flex: 1;">
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; color: #475569; font-weight: bold;">Prefixo do Veículo *</label>
+            <input type="text" id="abs-prefixo" name="prefixo" list="lista-frota-abs" placeholder="Ex: C15.1002" onchange="preencherPlacaAbs(this.value)" autocomplete="off" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold; color: #1e3a8a; text-transform: uppercase;">
+            <datalist id="lista-frota-abs"></datalist>
+          </div>
+        </div>
+        <input type="hidden" name="placa" id="abs-placa">
+        <div class="form-row-3" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+          <div class="input-group">
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; color: #475569; font-weight: bold;">Combustível *</label>
+            <select name="combustivel" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+              <option value="" disabled selected>Selecione...</option>
+              <option value="DIESEL S-10">Diesel S-10</option>
+              <option value="ARLA">Arla</option>
+              <option value="GASOLINA">Gasolina</option>
+              <option value="ETANOL">Etanol</option>
+            </select>
+          </div>
+          <div class="input-group"><label style="display: block; font-size: 12px; margin-bottom: 5px; color: #475569; font-weight: bold;">KM / Horímetro *</label><input type="number" name="km" step="0.1" required placeholder="Ex: 14520.5" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;"></div>
+          <div class="input-group"><label style="display: block; font-size: 12px; margin-bottom: 5px; color: #475569; font-weight: bold;">Litros *</label><input type="number" name="litros" step="0.01" required placeholder="Ex: 120.50" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;"></div>
+        </div>
+        <div class="form-row" style="display: flex; gap: 15px; margin-bottom: 15px;">
+          <div class="input-group" style="flex: 1;"><label style="display: block; font-size: 12px; margin-bottom: 5px; color: #475569; font-weight: bold;">Valor do Litro (R$) *</label><input type="number" name="valorLitro" step="0.01" required placeholder="Ex: 6.50" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;"></div>
+          <div class="input-group" style="flex: 1;"><label style="display: block; font-size: 12px; margin-bottom: 5px; color: #475569; font-weight: bold;">Valor Total (R$) *</label><input type="number" name="valorTotal" step="0.01" required placeholder="Ex: 650.00" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;"></div>
+        </div>
+        <div class="form-row-3" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; background: #f1f5f9; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px dashed #cbd5e1;">
+          <div class="input-group" style="margin-bottom:0;"><label style="font-size: 11px; display: block; color: #64748b; margin-bottom: 4px;">KM Total</label><input type="number" name="kmTotal" step="0.1" placeholder="Calculado" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px;"></div>
+          <div class="input-group" style="margin-bottom:0;"><label style="font-size: 11px; display: block; color: #64748b; margin-bottom: 4px;">KM/L</label><input type="number" name="kmPorLitro" step="0.01" placeholder="Calculado" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px;"></div>
+          <div class="input-group" style="margin-bottom:0;"><label style="font-size: 11px; display: block; color: #64748b; margin-bottom: 4px;">L/KM</label><input type="number" name="litroPorKm" step="0.01" placeholder="Calculado" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px;"></div>
+        </div>
+        <div class="form-row" style="display: flex; gap: 15px; margin-bottom: 20px;">
+          <div class="input-group" style="flex: 1;"><label style="display: block; font-size: 12px; margin-bottom: 5px; color: #475569; font-weight: bold;">R$ / KM</label><input type="number" name="rsPorKm" step="0.01" placeholder="Calculado" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;"></div>
+          <div class="input-group" style="flex: 2;">
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; color: #475569; font-weight: bold;">Centro de Custo *</label>
+            <select name="centroCusto" required style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+              <option value="" disabled selected>Selecione a área...</option>
+              <option value="ABASTECIMENTO">ABASTECIMENTO</option><option value="ADMINISTRAÇÃO">ADMINISTRAÇÃO</option><option value="COLETA DOMICILIAR">COLETA DOMICILIAR</option><option value="ENTULHO MECANIZADO">ENTULHO MECANIZADO</option><option value="LAVAGEM">LAVAGEM</option><option value="MANUTENÇÃO">MANUTENÇÃO</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" id="btn-submit-abs" style="width: 100%; padding: 12px; background: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">💾 Salvar Abastecimento</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div id="modal-detalhes-abastecimento" class="modal-overlay" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 9999;">
+  <div class="modal-box" style="background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 450px;">
+    <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">
+      <h2 style="font-size: 16px; margin: 0;">⛽ Detalhes do Abastecimento</h2>
+      <span style="font-size: 24px; cursor: pointer; color: #64748b;" onclick="fecharModal('modal-detalhes-abastecimento')">×</span>
+    </div>
+    <div class="modal-body" style="font-size: 13px; line-height: 1.6; color: #334155;">
+       <p><strong>ID / Cupom:</strong> <span id="view-abs-id"></span></p>
+       <p><strong>Veículo:</strong> <span id="view-abs-veiculo" style="color:#1e3a8a; font-weight:bold;"></span></p>
+       <p><strong>Data:</strong> <span id="view-abs-data"></span></p>
+       <p><strong>Combustível:</strong> <span id="view-abs-comb"></span></p>
+       <p><strong>Litros:</strong> <span id="view-abs-litros"></span></p>
+       <p><strong>Valor Total:</strong> <span id="view-abs-valor" style="color:#059669; font-weight:bold;"></span></p>
+       <p><strong>Centro de Custo:</strong> <span id="view-abs-cc"></span></p>
+    </div>
+    <div class="modal-footer" style="display:flex; gap:10px; margin-top:20px;">
+       <button id="btn-abs-editar" style="flex:1; padding: 10px; background:#f59e0b; color: white; border: none; border-radius: 6px; cursor: pointer;">✏️ Editar</button>
+       <button id="btn-abs-excluir" style="flex:1; padding: 10px; background:#ef4444; color: white; border: none; border-radius: 6px; cursor: pointer;">🗑️ Excluir</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-editar-abastecimento" class="modal-overlay" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 9999;">
+  <div class="modal-box" style="background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 450px;">
+    <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">
+      <h2 style="font-size: 16px; margin: 0;">✏️ Editar Abastecimento</h2>
+      <span style="font-size: 24px; cursor: pointer; color: #64748b;" onclick="fecharModal('modal-editar-abastecimento')">×</span>
+    </div>
+    <form id="formEditarAbastecimento" onsubmit="enviarEdicaoAbastecimento(event)">
+      <input type="hidden" id="edit-abs-linha">
+      <div style="display: flex; flex-direction: column; gap: 15px;">
+         <div><label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold;">Litros Reais</label><input type="number" step="0.01" id="edit-abs-litros" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;" required></div>
+         <div><label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold;">Valor Total (R$)</label><input type="number" step="0.01" id="edit-abs-valor" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;" required></div>
+         <div><label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold;">Centro de Custo</label><input type="text" id="edit-abs-cc" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-transform: uppercase;"></div>
+      </div>
+      <button type="submit" style="width:100%; margin-top:20px; padding: 12px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">💾 Guardar Alterações</button>
+    </form>
+  </div>
+</div>

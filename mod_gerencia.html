@@ -1,0 +1,31 @@
+<div id="gerencia-frota" class="aba-conteudo" style="display: none;">
+
+  <div class="gerencia-container">
+    <div class="header-gerencia">
+      <div>
+        <i class="fa-solid fa-chart-line" style="margin-right: 10px;"></i>GESTÃO DE FROTA - HISTÓRICO
+      </div>
+      <div>
+         <label style="font-size: 12px; margin-right: 10px; font-weight: normal;">Consultar Data:</label>
+         <input type="date" id="data-filtro-gerencia" class="input-data" onchange="carregarRelatorioGerencia()">
+      </div>
+    </div>
+
+    <table class="tabela-gerencia">
+      <thead>
+        <tr>
+          <th style="text-align: left; padding-left: 10px; width: 35%;">TIPO DE EQUIPAMENTO</th>
+          <th style="width: 13%;">1º Check<br>8:00</th>
+          <th style="width: 13%;">2º Check<br>11:00</th>
+          <th style="width: 13%;">3º Check<br>15:00</th>
+          <th style="width: 13%;">4º Check<br>19:00</th>
+          <th style="width: 13%;">MÉDIA DO DIA</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-gerencia-frota">
+        <tr><td colspan="6" style="padding: 30px;"><i class="fa-solid fa-spinner fa-spin"></i> Inicializando painel...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>

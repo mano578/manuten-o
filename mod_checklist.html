@@ -1,0 +1,118 @@
+<div id="aba-checklist-diario" class="aba-tela" style="display:none;">
+  <div class="conteudo-principal" style="width: 100%; max-width: 1200px; margin: 0 auto; padding: 20px;">
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; flex-wrap: wrap; gap: 15px;">
+      <h1 class="titulo-tela" style="margin: 0;">📋 Checklist Diário dos Motoristas</h1>
+      <button class="btn-salvar" style="width: auto; padding: 12px 20px; font-size: 14px; background:#0f766e; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; transition:0.2s;" onmouseover="this.style.background='#115e59'" onmouseout="this.style.background='#0f766e'" onclick="abrirModalNovoChecklist()">
+        ➕ Novo Checklist
+      </button>
+    </div>
+
+    <div class="historico-container" style="margin-top: 10px; background: white; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; width: 100%; box-sizing: border-box;">
+
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+        <h3 style="margin: 0; color: #0f766e; font-size: 16px;">🗂️ Histórico de Checklists</h3>
+        <input type="text" id="busca-checklist" onkeyup="filtrarChecklists()" placeholder="🔍 Pesquisar por prefixo ou motorista..." style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; max-width: 320px; font-size: 13px; outline: none;">
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table style="width:100%; border-collapse: collapse; min-width: 700px;">
+          <thead>
+            <tr style="background:#f8fafc; color:#475569; text-align:left; border-bottom: 2px solid #e2e8f0;">
+              <th style="padding:12px; font-size: 12px; font-weight: 600;">DATA/HORA</th>
+              <th style="padding:12px; font-size: 12px; font-weight: 600;">PREFIXO</th>
+              <th style="padding:12px; font-size: 12px; font-weight: 600;">MOTORISTA</th>
+              <th style="padding:12px; font-size: 12px; font-weight: 600;">EQUIPAMENTO</th>
+              <th style="padding:12px; font-size: 12px; font-weight: 600;">GRAVIDADE</th>
+              <th style="padding:12px; font-size: 12px; font-weight: 600;">AÇÃO</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-lista-checklist">
+            <tr>
+              <td colspan="6" style="text-align: center; padding: 20px; color: #64748b; font-style: italic;">
+                ⏳ Sincronizando registros com a planilha...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ================= MODAL: NOVO CHECKLIST ================= -->
+<div class="modal-overlay" id="modal-novo-checklist">
+  <div class="modal-box" style="max-width: 720px; height: 95vh;">
+    <div class="modal-header">
+      <h2>📋 Novo Checklist Diário</h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-novo-checklist')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="formChecklist" onsubmit="enviarChecklistDiario(event)">
+
+        <div class="form-row-3">
+          <div class="input-group">
+            <label>Veículo (Prefixo ou Placa) *</label>
+            <input type="text" id="check-prefixo" list="lista-veiculos-checklist" autocomplete="off" required placeholder="Ex: C15.1002" onchange="selecionarVeiculoChecklist(this.value)">
+            <datalist id="lista-veiculos-checklist"></datalist>
+          </div>
+          <div class="input-group">
+            <label>Placa</label>
+            <input type="text" id="check-placa" readonly style="background:#f1f5f9;">
+          </div>
+          <div class="input-group">
+            <label>Motorista *</label>
+            <input type="text" id="check-motorista" required placeholder="Nome completo">
+          </div>
+        </div>
+
+        <div class="form-row" style="margin-top: 10px;">
+          <div class="input-group">
+            <label>KM de Saída *</label>
+            <input type="number" id="check-km" step="1" min="0" required placeholder="Ex: 125430">
+          </div>
+        </div>
+
+        <div id="check-grupo-nome" style="margin: 10px 0 5px 0; font-weight: bold; color:#0f766e; font-size:14px;"></div>
+
+        <div id="itens-checklist-container">
+          <div style="text-align:center; padding: 30px; color:#94a3b8; font-style: italic;">
+            🚚 Selecione um veículo acima para carregar os itens do checklist.
+          </div>
+        </div>
+
+        <div class="input-group" style="margin-top: 10px;">
+          <label>Observação Geral</label>
+          <textarea id="check-obs-geral" rows="2" placeholder="Alguma observação adicional sobre o veículo/turno..." style="width:100%; padding:8px; border-radius:6px; border:1px solid #cbd5e1; font-family:inherit; resize:none;"></textarea>
+        </div>
+
+        <div class="input-group" style="margin-top: 10px;">
+          <label>📷 Fotos das Avarias (opcional)</label>
+          <input type="file" id="check-fotos-avarias" accept="image/*" multiple onchange="previsualizarFotosAvarias()" style="padding: 8px; width:100%; border:1px dashed #cbd5e1; border-radius:6px; background:#f8fafc;">
+          <div id="preview-fotos-avarias" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;"></div>
+        </div>
+
+        <button type="submit" class="btn-salvar" id="btn-salvar-checklist" style="margin-top: 15px;">💾 Salvar Checklist</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODAL: VISUALIZAR CHECKLIST ================= -->
+<div class="modal-overlay" id="modal-ver-checklist">
+  <div class="modal-box" style="max-width: 640px;">
+    <div class="modal-header">
+      <h2>🔍 Detalhes do Checklist</h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-ver-checklist')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="corpo-detalhe-checklist">
+        <!-- preenchido dinamicamente por verDetalheChecklist() -->
+      </div>
+      <button type="button" id="btn-abrir-os-checklist" class="btn-salvar" style="margin-top: 15px; background:#1d4ed8;" onclick="abrirOSDoChecklist()">
+        🛠️ Abrir Ordem de Serviço para este Veículo
+      </button>
+    </div>
+  </div>
+</div>

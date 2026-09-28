@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <?!= include('CSS'); ?>
+  </head>
+  <body>
+
+    <?!= include('Mod_Login'); ?>
+
+    <div id="sistema-principal">
+      <div id="overlay-menu" class="overlay-menu" onclick="toggleMenu()"></div>
+      
+      <div class="sidebar">
+        <div class="logo-area">
+          <svg class="sidebar-logo-svg" viewBox="0 0 300 90" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="45" cy="45" r="32" fill="#10b981"/>
+            <path d="M45 22 C 65 22, 65 45, 45 68 C 25 45, 25 22, 45 22 Z" fill="#ffffff"/>
+            <path d="M45 22 C 45 22, 55 45, 45 68" fill="none" stroke="#10b981" stroke-width="2"/>
+            <text x="88" y="50" font-family="'Poppins', sans-serif" font-weight="800" font-size="40" fill="#0f172a" letter-spacing="0.5">INOVAR</text>
+            <text x="91" y="72" font-family="'Poppins', sans-serif" font-weight="500" font-size="14" fill="#64748b" letter-spacing="0.5">Soluções Ambientais LTDA</text>
+          </svg>
+        </div>
+        <ul class="menu-lista">
+          <li class="menu-item menu-admin" data-aba="admin" id="btn-menu-admin" onclick="alternarAba('admin', this)" style="display:none;">👑 Painel Admin</li>
+          <li class="menu-item" data-aba="painel-geral" onclick="alternarAba('painel-geral', this)">📊 Painel Geral</li>
+          <li class="menu-item" data-aba="calendario-frota" onclick="alternarAba('calendario-frota', this)">📅 Calendário Frota</li>
+          <div>
+  <a class="menu-item menu-pai" onclick="toggleSubMenu('submenu-admin', 'seta-admin')" style="cursor: pointer;">
+    <div class="titulo-menu-pai">
+      <i class="fa-solid fa-briefcase" style="color: #3b82f6;"></i> 🗂️ Administrativo
+    </div>
+    <i class="fa-solid fa-chevron-down seta-menu" id="seta-admin"></i>
+  </a>
+  
+  <div class="submenu-container" id="submenu-admin" style="display: none;">
+    <a class="menu-item" onclick="alternarAba('funcionarios')">
+      <i class="fa-solid fa-users"></i> 👥 Funcionários
+    </a>
+    <a class="menu-item" onclick="alternarAba('escala-trabalho')">
+      <i class="fa-solid fa-calendar-days"></i> 📅 Escala de Trabalho
+    </a>
+    <a class="menu-item" onclick="alternarAba('atestados'); carregarTabelaOcorrenciasGeral('ATESTADOS')">
+      <i class="fa-solid fa-notes-medical"></i> 🩺 Atestados
+    </a>
+    <a class="menu-item" onclick="alternarAba('advertencias'); carregarTabelaOcorrenciasGeral('ADVERTÊNCIA')">
+      <i class="fa-solid fa-triangle-exclamation"></i> ⚠️ Advertências
+    </a>
+    <a class="menu-item" onclick="alternarAba('suspensoes'); carregarTabelaOcorrenciasGeral('SUSPENSÃO')">
+      <i class="fa-solid fa-circle-exclamation"></i> 🛑 Suspensões
+    </a>
+  </div>
+</div>
+<div>
+  <a class="menu-item menu-pai" onclick="toggleSubMenu('submenu-frota', 'seta-frota')" style="cursor: pointer;">
+    <div class="titulo-menu-pai">
+      <i class="fa-solid fa-truck-front" style="color: #3b82f6;"></i> 🚚 Gestão de Frota
+    </div>
+    <i class="fa-solid fa-chevron-down seta-menu" id="seta-frota"></i>
+  </a>
+  
+  <div class="submenu-container" id="submenu-frota" style="display: none;">
+    <a class="menu-item" onclick="alternarAba('abastecimento')">
+      <i class="fa-solid fa-gas-pump"></i> ⛽ Abastecimento
+    </a>
+    <a class="menu-item" onclick="alternarAba('custos-frota')">
+      <i class="fa-solid fa-file-invoice-dollar"></i> 💰 Custos Frota
+    </a>
+    <a class="menu-item" onclick="alternarAba('lista-veiculos')">
+      <i class="fa-solid fa-car"></i> 🚘 Frota Cadastrada
+    </a>
+    <a class="menu-item" onclick="alternarAba('sos')">
+      <i class="fa-solid fa-truck-medical"></i> 🚨 Central SOS
+    </a>
+    <a class="menu-item" onclick="alternarAba('lavagem')">
+      <i class="fa-solid fa-droplet"></i> 💦 Lavagem
+    </a>
+    <a class="menu-item" onclick="alternarAba('notas-fiscais')">
+      <i class="fa-solid fa-receipt"></i> 🧾 Notas Fiscais
+    </a>
+    <a class="menu-item" onclick="alternarAba('toneladas-frota')">
+      <i class="fa-solid fa-weight-scale"></i> ⚖️ Toneladas Frota
+    </a>
+    <a class="menu-item" onclick="alternarAba('ordem-servico')">
+      <i class="fa-solid fa-wrench"></i> 🛠️ Ordem de Serviço
+    </a>
+    <a class="menu-item" onclick="alternarAba('cadastro-pneu')">
+      <i class="fa-solid fa-dharmachakra"></i> 🛞 Controle de Pneus
+    </a>
+    <a class="menu-item" onclick="alternarAba('aplicar-pneus'); carregarFrotaParaMovimentacao()">
+  <i class="fa-solid fa-screwdriver-wrench"></i> 🔄 Aplicar Pneus
+</a>
+    <a class="menu-item" onclick="alternarAba('radar-manutencao'); carregarRadarManutencao()">
+      <i class="fa-solid fa-satellite-dish"></i> 📡 Radar de Manutenção     
+    </a>
+  </div>
+</div>
+          <li class="menu-item" data-aba="gerencia-frota" onclick="alternarAba('gerencia-frota', this)">⚙️ Gerência Frota</li>         
+          <li class="menu-item" data-aba="checklist-diario" onclick="alternarAba('checklist-diario', this)">📋 Checklist Diário</li>         
+        </ul>
+        <li class="menu-item" data-aba="relatorios-frota" onclick="alternarAba('relatorios-frota', this)">🖨️ Relatórios Frota</li>         
+        </ul>
+        <div class="sidebar-footer">
+          <div class="user-greeting">Sessão ativa como:<br><span id="nome-usuario" class="nome-destaque">Usuário</span></div>
+          <button class="btn-logout" onclick="fazerLogout()">Sair do Sistema</button>
+        </div>
+      </div>
+
+      <div class="main-content">
+        <div class="mobile-header">
+          <button class="btn-menu-mobile" onclick="toggleMenu()">☰ Menu</button>
+          <span class="mobile-title">INOVAR Dashboard</span>
+        </div>
+        <div style="display: flex; justify-content: flex-end; padding: 15px 25px 5px 0; width: 100%; box-sizing: border-box; position: sticky; top: 0; z-index: 90;">
+          <button id="btn-global-sync" onclick="sincronizarAbaAtual()" style="background: #ffffff; border: 1px solid #cbd5e1; color: #1e293b; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
+            <span id="icone-sync-anim">🔄</span> <span id="texto-sync-btn">Atualizar Dados</span>
+          </button>
+        </div>
+
+        <?!= include('Mod_Painel'); ?>
+        <?!= include('Mod_Abastecimento'); ?>
+        <?!= include('Mod_Custos'); ?>
+        <?!= include('Mod_RH'); ?>
+        <?!= include('Mod_Frota'); ?>
+        <?!= include('Mod_Manutencao'); ?>
+        <?!= include('Mod_Pneus'); ?>
+        <?!= include('Mod_Lavagem'); ?>
+        <?!= include('Mod_Notas'); ?>
+        <?!= include('Mod_Toneladas'); ?>
+        <?!= include('Mod_Admin'); ?>
+        <?!= include('Mod_calendario'); ?>
+        <?!= include('manutencao_tela'); ?>
+        <?!= include('Mod_Gerencia'); ?>
+        <?!= include('Mod_Relatorios'); ?>
+        <?!= include('Mod_Checklist'); ?>
+
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+
+    <?!= include('JS_Global'); ?>
+    <?!= include('JS_Admin'); ?>
+    <?!= include('JS_Painel'); ?>
+    <?!= include('JS_Abastecimento'); ?>
+    <?!= include('JS_Custos'); ?>
+    <?!= include('JS_RH'); ?>
+    <?!= include('JS_Frota'); ?>
+    <?!= include('JS_Manutencao'); ?>
+    <?!= include('JS_Pneus'); ?>
+    <?!= include('JS_Lavagem'); ?>
+    <?!= include('JS_Notas'); ?>
+    <?!= include('JS_Toneladas'); ?>
+    <?!= include('JS_calendario'); ?>
+    <?!= include('JS_Gerencia'); ?>
+    <?!= include('JS_Checklist'); ?>
+    
+  </body>
+</html>

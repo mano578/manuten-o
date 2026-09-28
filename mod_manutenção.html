@@ -1,0 +1,498 @@
+<div id="aba-sos" class="aba-tela">
+  <h1 class="titulo-tela">🚨 Central de SOS</h1>
+  <div style="max-width: 1200px;">
+
+    <div class="admin-card" style="margin-bottom: 25px;">
+      <h3 style="color:#b91c1c; border-bottom-color: #fecaca;">Abrir Solicitação de SOS</h3>
+      <form id="form-sos" onsubmit="enviarNovoSOS(event)">
+        
+        <div class="form-row-3">
+          <div class="input-group">
+            <label>Prefixo do Veículo *</label>
+            <input type="text" id="sos-prefixo" name="prefixo" list="lista-frota-sos" placeholder="Ex: C15.1002" onchange="preencherPlacaSOS(this.value)" autocomplete="off" required style="font-weight: bold; color: #1e3a8a;">
+            <datalist id="lista-frota-sos"></datalist>
+          </div>
+          <div class="input-group">
+            <label>Placa *</label>
+            <input type="text" id="sos-placa" required readonly style="background:#f1f5f9; cursor:not-allowed;">
+          </div>
+          <div class="input-group">
+            <label>Solicitante *</label>
+            <select id="sos-solicitante" required>
+              <option value="" disabled selected>Selecione...</option>
+              <option value="MANUTENÇÃO">MANUTENÇÃO</option>
+              <option value="BASE">BASE</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row-3">
+          <div class="input-group">
+            <label>Tipo de Solicitação *</label>
+            <select id="sos-tipo" required>
+              <option value="">Selecione...</option>
+              <option value="HIDRAULICA">HIDRAULICA</option>
+              <option value="PNEUS">PNEUS</option>
+              <option value="MECÂNICA">MECÂNICA</option>
+              <option value="ELÉTRICA">ELÉTRICA</option>
+              <option value="OUTROS">OUTROS</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label>Solicitação de Reboque? *</label>
+            <select id="sos-reboque" required>
+              <option value="NÃO">NÃO</option>
+              <option value="SIM">SIM</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label>Descrição Breve do Problema *</label>
+            <input type="text" id="sos-descricao" required placeholder="Ex: Pneu furado, falha elétrica...">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="input-group">
+            <!-- NOVO CAMPO (revisão 8): permite escolher a data/hora real da abertura do SOS,
+                 em vez de gravar sempre o momento exato do clique. Preenchido com "agora" por
+                 padrão, mas editável. -->
+            <label>Data e Hora de Abertura *</label>
+            <input type="datetime-local" id="sos-data-abertura" required>
+          </div>
+        </div>
+        
+        <button type="submit" class="btn-salvar" id="btn-salvar-sos" style="background:#dc2626; margin-top: 10px;"><span class="btn-text">🚨 Registrar SOS no Sistema</span></button>
+      </form>
+    </div>
+
+    <h3>📋 Histórico de Solicitações (Aba: SOS_FROTA)</h3>
+    <div class="table-wrapper">
+      <table class="tabela-dados" style="font-size: 11px;">
+        <thead>
+          <tr>
+            <th>DATA/HORA SOLICITAÇÃO</th>
+            <th>PREFIXO</th>
+            <th>PLACA</th>
+            <th>TIPO</th>
+            <th>DESCRIÇÃO</th>
+            <th>STATUS</th>
+            <th>SOLICITANTE</th>
+            <th>DATA/HORA CONCLUSÃO</th>
+            <th>REBOQUE</th>
+            <th style="text-align:center;">AÇÃO/TEMPO</th>
+            <th style="text-align:center;">EDITAR</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-sos">
+          <tr><td colspan="11" class="vazio-msg">A carregar banco de dados...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<div id="aba-ordem-servico" class="aba-tela" style="display:none;">
+          <h1 class="titulo-tela">🛠️ Gestão de Ordens de Serviço (O.S.)</h1>
+          <div style="max-width: 1200px;">
+            
+            <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 20px; margin-bottom: 25px; display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-between; align-items: stretch;">
+              
+              <div style="flex: 1; min-width: 340px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                  <h4 style="margin: 0; color: #1e3a8a; font-size: 14px;">📅 Pesquisa e Filtro de Período</h4>
+                  <button class="btn-salvar" style="width: auto; padding: 5px 12px; font-size: 12px; background:#1e3a8a; margin: 0;" onclick="abrirModalNovaOS()">➕ Nova O.S.</button>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                  <div class="barra-busca-container" style="grid-column: 1 / -1;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <input type="text" id="input-busca-os" class="barra-busca" placeholder="Buscar ID, Prefixo ou Placa..." onkeyup="filtrarOS()" style="padding: 8px 10px 8px 35px; height: 35px; font-size: 12px;">
+                  </div>
+                  <div>
+                    <label style="font-size: 10px; font-weight: bold; color: #64748b;">De (Data Inicial):</label>
+                    <input type="date" id="os-filtro-inicio" class="barra-busca" onchange="filtrarOS()" style="padding: 6px; height: 35px; font-size: 12px;">
+                  </div>
+                  <div>
+                    <label style="font-size: 10px; font-weight: bold; color: #64748b;">Até (Data Final):</label>
+                    <input type="date" id="os-filtro-fim" class="barra-busca" onchange="filtrarOS()" style="padding: 6px; height: 35px; font-size: 12px;">
+                  </div>
+                </div>
+
+                <div style="display: flex; gap: 10px;">
+                  <select id="filtro-status-os" onchange="filtrarOS()" style="flex: 2; height: 35px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; background: #f1f5f9; color: #1e293b; font-weight: 600; cursor: pointer;">
+                    <option value="TODOS">📋 Todas as O.S.</option>
+                    <option value="ABERTO" selected>🟢 Apenas Abertas</option>
+                    <option value="FECHADO">🔴 Encerradas</option>
+                  </select>
+                  <button onclick="limparFiltroPeriodoOS()" style="flex: 1; background: #e2e8f0; color: #475569; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px; transition: 0.2s;" onmouseover="this.style.background='#cbd5e1'" onmouseout="this.style.background='#e2e8f0'">Limpar Filtro</button>
+                </div>
+              </div>
+
+              <div style="flex: 1; min-width: 250px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; border-left: 4px solid #f59e0b; box-shadow: 0 2px 4px rgba(0,0,0,0.02); display: flex; flex-direction: column; justify-content: space-between;">
+                <div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h4 style="margin: 0; color: #b45309; font-size: 14px;">📈 Indicadores de Manutenção</h4>
+                    <span id="os-total-periodo" style="background: #fef3c7; color: #b45309; padding: 4px 10px; border-radius: 12px; font-weight: 900; font-size: 12px;">0 O.S.</span>
+                  </div>
+                  <p style="font-size: 11px; color: #64748b; margin-bottom: 5px; font-weight: bold; border-bottom: 1px solid #f1f5f9; padding-bottom: 5px;">🏆 TOP 3 Caminhões Mais Quebrados:</p>
+                  <div id="os-top3-veiculos" style="font-size: 12px; color: #1e293b; line-height: 1.8;">
+                    <span style="color:#94a3b8; font-style:italic;">Aguardando dados...</span>
+                  </div>
+                </div>
+                
+                <button onclick="imprimirRelatorioOS()" style="width: 100%; margin-top: 15px; background: #475569; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; font-size: 12px; cursor: pointer; transition: 0.2s;" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='#475569'">
+                  🖨️ Gerar PDF do Relatório Filtrado
+                </button>
+              </div>
+            </div>
+
+            <div class="table-wrapper">
+              <table class="tabela-dados" style="font-size: 11px;">
+                <thead>
+                  <tr>
+                    <th>ID O.S.</th>
+                    <th>DATA INICIAL</th>
+                    <th>PREFIXO</th>
+                    <th>PLACA</th>
+                    <th>TIPO O.S.</th>
+                    <th>SETOR</th>
+                    <th>PRIORIDADE</th>
+                    <th>STATUS</th>
+                    <th>CUSTO TOTAL</th>
+                    <th style="text-align:center;">AÇÃO</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-ordens-servico">
+                  <tr><td colspan="10" class="vazio-msg">A sincronizar banco de dados de O.S...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <style>
+          @media print {
+            #area-impressao-relatorio-os { display: block !important; position: absolute; left: 0; top: 0; width: 100%; border: none; padding: 10mm; background: white; z-index: 9999; }
+          }
+        </style>
+        <div id="area-impressao-relatorio-os" style="display: none;">
+          <div class="print-template-container" style="max-width: 1000px; margin: 0 auto;">
+            <div class="print-header-mockup" style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px;">
+              <h1 class="logo-text" style="font-size: 30px; margin: 0;">Inovar</h1>
+              <h2 class="logo-subtext" style="font-size: 12px; margin: 0; color: #64748b;">Soluções Ambientais LTDA</h2>
+              <h3 style="margin: 15px 0 5px 0; font-size: 18px; text-transform: uppercase;">Relatório Analítico de Ordens de Serviço</h3>
+              <p style="margin: 0; font-size: 12px;"><strong>Período Filtrado:</strong> <span id="print-relatorio-os-periodo"></span></p>
+            </div>
+
+            <div style="display:flex; justify-content: space-between; margin-bottom: 20px; font-size: 13px; background: #f1f5f9; padding: 10px; border: 1px solid #cbd5e1;">
+               <div><strong>Total de Intervenções (O.S.):</strong> <span id="print-relatorio-os-total-qtd"></span></div>
+               <div><strong>Custo Acumulado da Seleção:</strong> <span id="print-relatorio-os-total-custo" style="color:#b91c1c; font-weight:bold;"></span></div>
+            </div>
+
+            <table class="print-table" style="width: 100%; border-collapse: collapse; font-size: 10px; text-align: left;">
+              <thead style="background-color: #f2f2f2;">
+                <tr>
+                  <th style="border: 1px solid #000; padding: 6px;">O.S.</th>
+                  <th style="border: 1px solid #000; padding: 6px;">DATA</th>
+                  <th style="border: 1px solid #000; padding: 6px;">PREFIXO</th>
+                  <th style="border: 1px solid #000; padding: 6px;">PLACA</th>
+                  <th style="border: 1px solid #000; padding: 6px;">TIPO</th>
+                  <th style="border: 1px solid #000; padding: 6px;">SETOR</th>
+                  <th style="border: 1px solid #000; padding: 6px;">STATUS</th>
+                  <th style="border: 1px solid #000; padding: 6px;">CUSTO R$</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-print-relatorio-os"></tbody>
+            </table>
+          </div>
+        </div>
+
+<div class="modal-overlay" id="modal-nova-os" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999;">
+  <div class="modal-box" style="max-width: 900px; width: 95%; max-height: 90vh; overflow-y: auto; background: white; border-radius: 12px; margin: auto; padding: 25px; position: relative;">
+    <div class="modal-header">
+      <h2 id="titulo-modal-os">🛠️ Abertura de Ordem de Serviço</h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-nova-os')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="formNovaOS" onsubmit="enviarFormularioOS(event)">
+        <input type="hidden" id="os-linha-edit" value="">
+        
+        <h3 style="font-size: 14px; color: #1e3a8a; border-bottom: 2px solid #e0e7ff; padding-bottom: 5px; margin-bottom: 15px;">1. Dados da Solicitação</h3>
+        <div class="form-row">
+          <div class="input-group">
+            <label>Data e Hora Inicial *</label>
+            <input type="datetime-local" id="os-data-inicial" required>
+          </div>
+        </div>
+        <div class="form-row-3">
+          <div class="input-group">
+            <label>Nível de Prioridade *</label>
+            <select id="os-prioridade" required>
+              <option value="" disabled selected>Selecione...</option><option value="BAIXA">Baixa</option><option value="MÉDIA">Média</option><option value="ALTA">Alta</option><option value="URGENTE">Urgente</option><option value="EMERGENCIAL" style="color:red; font-weight:bold;">Emergencial</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label>Solicitante *</label>
+            <select id="os-solicitante" required>
+              <option value="" disabled selected>Selecione...</option><option value="MANUTENÇÃO">Manutenção</option><option value="BASE">Base</option><option value="MOTORISTA">Motorista</option><option value="DIRETORIA">Diretoria</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label>Situação da Parada *</label>
+            <select id="os-situacao-parada" required>
+              <option value="PROGRAMADA">Programada</option><option value="NÃO PROGRAMADA" style="color:red; font-weight:bold;">Não Programada (Quebra)</option>
+            </select>
+          </div>
+        </div>
+
+        <h3 style="font-size: 14px; color: #1e3a8a; border-bottom: 2px solid #e0e7ff; padding-bottom: 5px; margin-bottom: 15px; margin-top: 20px;">2. Dados do Veículo</h3>
+            <div class="form-row-3">
+              <div class="input-group">
+                <label>Prefixo *</label>
+                <input type="text" id="os-prefixo" list="lista-veiculos-os" required onchange="preencherDadosVeiculoOS(this.value)" placeholder="Ex: C15.1002" autocomplete="off" style="font-weight: bold; color: #1e3a8a;">
+                <datalist id="lista-veiculos-os"></datalist>
+              </div>
+              <div class="input-group">
+                <label>Placa</label>
+                <input type="text" id="os-placa" readonly style="background:#f1f5f9; font-weight:bold; cursor:not-allowed;">
+              </div>
+              <div class="input-group">
+                <label>KM / Horímetro *</label>
+                <input type="number" id="os-km" step="0.1" required placeholder="Digite o KM...">
+              </div>
+            </div>
+
+        <h3 style="font-size: 14px; color: #1e3a8a; border-bottom: 2px solid #e0e7ff; padding-bottom: 5px; margin-bottom: 15px; margin-top: 20px;">3. Detalhes da Manutenção</h3>
+        <div class="form-row-3">
+          <div class="input-group">
+            <label>Tipo de Manutenção *</label>
+            <select id="os-tipo-manutencao" required><option value="" disabled selected>Selecione...</option><option value="PREVENTIVA">Preventiva</option><option value="CORRETIVA">Corretiva</option><option value="PREDITIVA">Preditiva</option><option value="LUBRIFICAÇÃO">Lubrificação</option></select>
+          </div>
+          <div class="input-group">
+            <label>Setor *</label>
+            <select id="os-setor" required><option value="" disabled selected>Selecione...</option><option value="MECÂNICA">Mecânica</option><option value="ELÉTRICA">Elétrica</option><option value="BORRACHARIA">Borracharia</option><option value="FUNILARIA/SOLDAGEM">Funilaria/Soldagem</option><option value="LAVAGEM">Lavagem</option></select>
+          </div>
+          <div class="input-group">
+            <label>Tipo de O.S. *</label>
+            <select id="os-tipo" onchange="verificarTipoOS(this.value)" required><option value="INTERNO" selected>Interno</option><option value="EXTERNO">Externo</option></select>
+          </div>
+        </div>
+
+        <div class="form-row" id="div-fornecedor-os" style="display:none;">
+          <div class="input-group" style="grid-column: 1 / -1;"><label style="color:#b45309;">Fornecedor / Oficina Terceirizada *</label><input type="text" id="os-fornecedor" placeholder="Ex: Auto Peças São José" style="border-color:#f59e0b;"></div>
+        </div>
+
+        <div class="input-group">
+          <label>Defeito / Relato do Problema *</label>
+          <textarea id="os-defeito" required placeholder="Descreva brevemente o problema relatado..." style="width:100%; padding:10px; border-radius:6px; border:1px solid #cbd5e1; font-family:'Poppins', sans-serif; resize:vertical; min-height:60px;"></textarea>
+        </div>
+
+        <div style="background:#f8fafc; padding:15px; border-radius:8px; border:1px solid #e2e8f0; margin-bottom: 20px;">
+          
+          <label style="font-size:12px; font-weight:700; color:#475569; display:block; margin-bottom:8px;">📦 PRODUTOS / PEÇAS</label>
+          <div id="container-produtos-os"></div>
+          <button type="button" onclick="adicionarProdutoOS()" style="background:none; border:none; color:#0284c7; font-size:12px; font-weight:bold; cursor:pointer; margin-bottom:15px;">➕ Adicionar Peça/Produto</button>
+
+          <label style="font-size:12px; font-weight:700; color:#475569; display:block; margin-bottom:8px;">🔧 SERVIÇOS E MÃO DE OBRA</label>
+          <div id="container-servicos-os"></div>
+          <button type="button" onclick="adicionarServicoOS()" style="background:none; border:none; color:#0284c7; font-size:12px; font-weight:bold; cursor:pointer;">➕ Adicionar Serviço</button>
+
+          <div style="text-align:right; margin-top:15px; border-top:1px dashed #cbd5e1; padding-top:10px;">
+            <span style="font-size:12px; color:#475569; font-weight:600;">CUSTO TOTAL GERAL: </span>
+            <span id="os-total-geral" style="font-size:18px; color:#b91c1c; font-weight:800;">R$ 0.00</span>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label>Diagnóstico / Parecer Técnico</label>
+          <textarea id="os-diagnostico" placeholder="O que foi constatado e resolvido..." style="width:100%; padding:10px; border-radius:6px; border:1px solid #cbd5e1; font-family:'Poppins', sans-serif; resize:vertical; min-height:50px;"></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="input-group">
+            <label>Mecânico / Responsável *</label>
+            <select id="os-mecanico" required><option value="" disabled selected>A carregar equipe...</option></select>
+          </div>
+          <div class="input-group">
+            <label>Anexos (Orçamentos, Fotos, Laudos)</label>
+            <input type="file" id="os-anexos" accept="image/*,.pdf" multiple style="padding: 8px;">
+          </div>
+        </div>
+
+        <button type="submit" class="btn-salvar" id="btn-submit-os" style="margin-top: 10px; width: 100%; background: #1e3a8a;"><span class="btn-text">Gerar Ordem de Serviço (O.S.)</span></button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- NOVO MODAL (revisão 8): pede a data/hora real de finalização da O.S. antes de encerrar,
+     em vez de gravar sempre o momento exato do clique em "Fechar". -->
+<div class="modal-overlay" id="modal-fechar-os" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 10000;">
+  <div class="modal-box" style="max-width: 400px; width: 90%; background: white; border-radius: 12px; padding: 25px;">
+    <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+      <h2 style="font-size:16px; margin:0;">🔒 Encerrar Ordem de Serviço</h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-fechar-os')">&times;</button>
+    </div>
+    <form id="form-fechar-os" onsubmit="confirmarFechamentoOS(event)">
+      <input type="hidden" id="os-fechar-linha">
+      <input type="hidden" id="os-fechar-prefixo">
+      <div class="input-group">
+        <label>Data e Hora da Finalização *</label>
+        <input type="datetime-local" id="os-data-fechamento" required>
+      </div>
+      <button type="submit" class="btn-salvar" style="background:#10b981; margin-top: 10px;">✅ Confirmar Encerramento</button>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-detalhes-os" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9998;">
+  <div class="modal-box" style="max-width: 750px; width: 95%; max-height: 90vh; overflow-y: auto; background: white; border-radius: 12px; margin: auto; padding: 25px;">
+    <div class="modal-header" style="border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 20px;">
+      <h2>📋 Detalhes da Ordem de Serviço - <span id="view-os-id" style="color:#1e3a8a;"></span></h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-detalhes-os')">&times;</button>
+    </div>
+    <div class="modal-body" style="font-size: 13px; color: #334155;">
+      
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 20px;">
+        <div><strong>Status:</strong> <span id="view-os-status" style="padding: 2px 6px; border-radius: 4px; font-weight: bold;"></span></div>
+        <div><strong>Prioridade:</strong> <span id="view-os-prioridade" style="font-weight: bold;"></span></div>
+        <div><strong>Data de Abertura:</strong> <span id="view-os-data"></span></div>
+        <div><strong>Solicitante:</strong> <span id="view-os-solicitante"></span></div>
+        <div><strong>Prefixo:</strong> <span id="view-os-prefixo" style="font-weight: bold; color:#1e3a8a;"></span></div>
+        <div><strong>Placa:</strong> <span id="view-os-placa" style="font-weight: bold;"></span></div>
+        <div><strong>KM / Horímetro:</strong> <span id="view-os-km"></span> KM</div>
+        <div><strong>Tipo de O.S.:</strong> <span id="view-os-tipo"></span></div>
+        <div><strong>Setor:</strong> <span id="view-os-setor"></span></div>
+        <div><strong>Fornecedor:</strong> <span id="view-os-fornecedor"></span></div>
+      </div>
+
+      <div style="margin-bottom: 20px;">
+        <h4 style="color:#1e3a8a; margin-bottom: 5px; font-size:13px; border-bottom: 1px solid #e2e8f0; padding-bottom:3px;">🔍 Defeito / Relato do Problema</h4>
+        <p id="view-os-defeito" style="background: #fff; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; min-height: 40px; white-space: pre-wrap; margin:0; font-style: italic;"></p>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+        <div>
+          <h4 style="color:#475569; margin-bottom: 5px; font-size:12px; border-bottom: 1px solid #e2e8f0; padding-bottom:3px;">📦 Produtos e Peças Utilizadas</h4>
+          <p id="view-os-produtos" style="background: #f8fafc; padding: 8px; border-radius: 6px; border: 1px solid #e2e8f0; white-space: pre-wrap; margin:0; line-height: 1.4; font-family: monospace;"></p>
+        </div>
+        <div>
+          <h4 style="color:#475569; margin-bottom: 5px; font-size:12px; border-bottom: 1px solid #e2e8f0; padding-bottom:3px;">🔧 Serviços Realizados</h4>
+          <p id="view-os-servicos" style="background: #f8fafc; padding: 8px; border-radius: 6px; border: 1px solid #e2e8f0; white-space: pre-wrap; margin:0; line-height: 1.4; font-family: monospace;"></p>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 20px;">
+        <h4 style="color:#1e3a8a; margin-bottom: 5px; font-size:13px; border-bottom: 1px solid #e2e8f0; padding-bottom:3px;">🛠️ Diagnóstico / Parecer Técnico Final</h4>
+        <p id="view-os-diagnostico" style="background: #fff; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; min-height: 40px; white-space: pre-wrap; margin:0; font-weight: 500;"></p>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; background: #f1f5f9; padding: 12px; border-radius: 8px; margin-bottom: 25px;">
+        <div><strong>Mecânico Técnico:</strong> <span id="view-os-mecanico"></span></div>
+        <div id="view-os-box-fechamento" style="display:none; font-size:11px; color:#475569; text-align:right;">
+          <div><strong>Fechamento:</strong> <span id="view-os-data-fim"></span></div>
+          <div><strong>Tempo de Oficina (Downtime):</strong> <span id="view-os-downtime" style="color:#b91c1c; font-weight:bold;"></span></div>
+        </div>
+      </div>
+
+      <div id="view-os-acoes-footer" style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid #cbd5e1; padding-top: 15px;">
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ALTERADO (revisão 9): o modal de conclusão do SOS foi movido para AQUI, fora de qualquer
+     ".aba-tela" (antes ficava dentro de "#aba-sos"). Como ".aba-tela" sem a classe "ativa" tem
+     "display:none", qualquer elemento filho seu também fica escondido mesmo definindo
+     "style.display='flex'" diretamente nele — por isso o botão "✅ Concluir Chamado" dos cards
+     de SOS no Painel/Monitoramento (que ficam numa aba diferente) não conseguia abrir este
+     modal. Estando fora de todas as abas, ele agora abre normalmente a partir de qualquer tela
+     (Central de SOS ou Monitoramento por Operação). Nenhum campo, id ou função foi alterado. -->
+<div class="modal-overlay" id="modal-fechar-sos" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999;">
+  <div class="modal-box" style="max-width: 400px; width: 90%; background: white; border-radius: 12px; padding: 25px;">
+    <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+      <h2 style="font-size:16px; margin:0;">✅ Concluir SOS</h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-fechar-sos')">&times;</button>
+    </div>
+    <form id="form-fechar-sos" onsubmit="confirmarFechamentoSOS(event)">
+      <input type="hidden" id="sos-fechar-linha">
+      <input type="hidden" id="sos-fechar-prefixo">
+      <div class="input-group">
+        <label>Data e Hora da Conclusão *</label>
+        <input type="datetime-local" id="sos-data-fechamento" required>
+      </div>
+      <button type="submit" class="btn-salvar" style="background:#10b981; margin-top: 10px;">✅ Confirmar Conclusão</button>
+    </form>
+  </div>
+</div>
+
+<!-- NOVO MODAL (revisão 9): permite corrigir um SOS já lançado (prefixo errado, erro de
+     digitação em qualquer campo, etc.) sem precisar apagar e lançar de novo. Fica fora de
+     qualquer ".aba-tela" pelo mesmo motivo explicado no modal acima. Reaproveita os mesmos
+     estilos de formulário (".form-row-3", ".input-group") já usados no formulário de abertura
+     do SOS, para manter o layout consistente e sem informações cortadas/desalinhadas. -->
+<div class="modal-overlay" id="modal-editar-sos" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999;">
+  <div class="modal-box" style="max-width: 620px; width: 92%; background: white; border-radius: 12px; padding: 25px; max-height: 90vh; overflow-y: auto;">
+    <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+      <h2 style="font-size:16px; margin:0;">✏️ Editar Chamado de SOS</h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-editar-sos')">&times;</button>
+    </div>
+    <p style="font-size:12px; color:#64748b; margin:-10px 0 15px 0;">Use isto apenas para corrigir dados lançados por engano (veículo errado, erro de digitação). O status do chamado não é alterado aqui.</p>
+    <form id="form-editar-sos" onsubmit="confirmarEdicaoSOS(event)">
+      <input type="hidden" id="sos-editar-linha">
+
+      <div class="form-row-3">
+        <div class="input-group">
+          <label>Prefixo do Veículo *</label>
+          <input type="text" id="sos-editar-prefixo" list="lista-frota-sos" autocomplete="off" required style="font-weight: bold; color: #1e3a8a;" onchange="preencherPlacaSOSEditar(this.value)">
+        </div>
+        <div class="input-group">
+          <label>Placa *</label>
+          <input type="text" id="sos-editar-placa" required readonly style="background:#f1f5f9; cursor:not-allowed;">
+        </div>
+        <div class="input-group">
+          <label>Solicitante *</label>
+          <select id="sos-editar-solicitante" required>
+            <option value="MANUTENÇÃO">MANUTENÇÃO</option>
+            <option value="BASE">BASE</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row-3">
+        <div class="input-group">
+          <label>Tipo de Solicitação *</label>
+          <select id="sos-editar-tipo" required>
+            <option value="HIDRAULICA">HIDRAULICA</option>
+            <option value="PNEUS">PNEUS</option>
+            <option value="MECÂNICA">MECÂNICA</option>
+            <option value="ELÉTRICA">ELÉTRICA</option>
+            <option value="OUTROS">OUTROS</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label>Solicitação de Reboque? *</label>
+          <select id="sos-editar-reboque" required>
+            <option value="NÃO">NÃO</option>
+            <option value="SIM">SIM</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label>Descrição Breve do Problema *</label>
+          <input type="text" id="sos-editar-descricao" required>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="input-group">
+          <label>Data e Hora de Abertura *</label>
+          <input type="datetime-local" id="sos-editar-data-abertura" required>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-salvar" style="background:#1d4ed8; margin-top: 10px;">💾 Salvar Correções</button>
+    </form>
+  </div>
+</div>

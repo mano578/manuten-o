@@ -1,0 +1,44 @@
+<div id="aba-toneladas-frota" class="aba-tela">
+  <h1 class="titulo-tela">⚖️ Controle de Toneladas e Pesagem</h1>
+  <div style="max-width: 1200px;">
+    
+    <div class="admin-card" style="margin-bottom: 25px;">
+      <h3 style="color:#166534; border-bottom-color: #dcfce7;">🤖 Importador de Planilha de Pesagem (Aterro)</h3>
+      <p style="font-size:12px; color:#64748b; margin-bottom:15px;">Selecione o Excel do aterro. O sistema puxará o prefixo automaticamente pela placa e destacará tickets já existentes em vermelho.</p>
+      <div class="input-group">
+        <input type="file" id="input-toneladas-massa" accept=".xlsx,.xls,.csv" onchange="processarArquivosToneladas(event)" style="background:#f8fafc; padding:10px;">
+      </div>
+      <div id="status-leitor-toneladas" class="status-ocr" style="margin-top:10px;">Aguardando seleção do arquivo...</div>
+    </div>
+
+    <div id="container-preview-toneladas" style="display:none; margin-bottom: 30px;">
+      <h3 style="font-size:16px; font-weight:700; color:#1e293b; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        📋 Conferência e Duplicidade
+        <button class="btn-salvar" id="btn-gravar-lote-ton" style="width:auto; padding:8px 15px; font-size:13px; background:#166534;" onclick="gravarLoteToneladasVerificado()">💾 Inserir Dados Válidos</button>
+      </h3>
+      <div class="table-wrapper">
+        <table class="tabela-dados" style="font-size: 11px;">
+          <thead>
+            <tr>
+              <th>ID</th><th>DATA</th><th>DIA</th><th>MOTORISTA</th><th>PLACA</th><th>VEÍCULO</th><th>SETOR</th><th>TICKET</th><th>LÍQUIDO</th><th>TURNO</th><th>MATERIAL</th><th>OBS</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-preview-toneladas"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <h3 style="font-size:16px; font-weight:700; color:#1e293b; margin-bottom:10px;">🗃️ Histórico Salvo</h3>
+    <div class="table-wrapper">
+      <table class="tabela-dados" style="font-size: 12px;">
+        <thead>
+          <tr><th>DATA</th><th>PLACA</th><th>VEÍCULO</th><th>TICKET</th><th>LÍQUIDO (Ton)</th><th>MATERIAL</th><th>MOTORISTA</th></tr>
+        </thead>
+        <tbody id="tbody-historico-toneladas">
+          <tr><td colspan="7" class="vazio-msg">A sincronizar banco de dados...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    
+  </div>
+</div>

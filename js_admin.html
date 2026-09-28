@@ -1,0 +1,390 @@
+<script>
+  // ================= ADMIN / BACKUP / DRIVER =================
+  function carregarNotificacoesAdmin() {
+    google.script.run.withSuccessHandler(function(lista) {
+      var container = document.getElementById('lista-recuperacoes-container'); if(!container) return;
+      if (!lista || lista.length === 0) return container.innerHTML = '<div class="vazio-msg">Nenhuma solicitação.</div>';
+      var html = '<ul class="lista-solicitacoes">';
+      for(var i=0; i<lista.length; i++) html += '<li class="solicitacao-item"><div class="solicitacao-info"><strong>'+lista[i].usuario+'</strong>'+lista[i].nome+'</div><button class="btn-redefinir" onclick="redefinirSenhaPrompt(\''+lista[i].usuario+'\')">Nova Senha</button></li>';
+      container.innerHTML = html + '</ul>';
+    }).listarSolicitacoesRecuperacao(usuarioLogado);
+  }
+  
+  function redefinirSenhaPrompt(alvo) {
+    var novaSenha = prompt("Digite a nova senha para '" + alvo + "':"); if (!novaSenha) return;
+    google.script.run.withSuccessHandler(function(res) { alert(res.mensagem); if (res.sucesso) carregarNotificacoesAdmin(); }).redefinirSenhaAdmin(usuarioLogado, alvo, novaSenha);
+  }
+
+  function abrirModalTrocaSenha() {
+    document.getElementById('modal-trocar-senha-user').style.display = 'flex';
+  }
+
+  // ================= AUTO-LOAD DO PAINEL ADMIN =================
+  // Ao clicar na aba "Painel Admin" no menu lateral, carrega as 4 listas automaticamente!
+  document.addEventListener("DOMContentLoaded", function() {
+    var abaAdminBtn = document.querySelector('[data-aba="admin"]');
+    if(abaAdminBtn) {
+      abaAdminBtn.addEventListener('click', function() {
+        carregarListaUsuarios();
+        carregarNotificacoesSenha();
+        carregarListaDriver();
+        carregarListaBackups();
+      });
+    }
+  });
+
+  // ================= NOVO CADASTRO COM CAIXAS DE SELEÇÃO E ANTI-ERROS =================
+  function cadastrarNovoUsuario() {
+    // O .trim() remove espaços em branco acidentais antes ou depois da palavra
+    var nome = document.getElementById('cad-nome').value.trim();
+    var user = document.getElementById('cad-usuario').value.trim();
+    var pass = document.getElementById('cad-senha').value.trim();
+    
+    // Alertas específicos para ajudar a detetar qual campo ficou vazio
+    if (!nome) return alert("❌ Por favor, preencha o NOME do utilizador.");
+    if (!user) return alert("❌ Por favor, preencha o ACESSO (Usuário).");
+    if (!pass) return alert("❌ Por favor, preencha a SENHA INICIAL.");
+    
+    // Recolhe todas as caixinhas que a Ingrid marcou
+    var checks = document.querySelectorAll('.chk-perm:checked');
+    var permissoesArray = [];
+    checks.forEach(function(c) { permissoesArray.push(c.value); });
+    
+    if (permissoesArray.length === 0) return alert("⚠️ Selecione pelo menos uma permissão de aba!");
+    
+    // Se "tudo" estiver marcado, o sistema resume para a palavra "tudo"
+    if (permissoesArray.includes("tudo")) {
+      permissoesArray = ["tudo"];
+    }
+    
+    var perm = permissoesArray.join(', '); // Ex: "painel-geral, sos, lavagem"
+
+    var trocaLivre = document.getElementById('cad-troca-livre').checked ? "SIM" : "NÃO";
+    
+    // Fallback de segurança para garantir que o utilizador criador é registado
+    var usrAtual = (typeof usuarioLogado !== 'undefined' && usuarioLogado) ? usuarioLogado : 'admin';
+
+    var btn = event.target;
+    var txtOriginal = btn.innerText;
+    btn.innerText = "⏳ A criar perfil...";
+    btn.disabled = true;
+
+    google.script.run.withSuccessHandler(function(res) { 
+      alert(res.mensagem); 
+      if (res.sucesso) { 
+        document.getElementById('cad-nome').value = ''; 
+        document.getElementById('cad-usuario').value = ''; 
+        document.getElementById('cad-senha').value = ''; 
+        document.querySelectorAll('.chk-perm').forEach(c => c.checked = false);
+        document.getElementById('cad-troca-livre').checked = false;
+        
+        // Atualiza a grelha de avatares na hora para ver o novo utilizador
+        if(typeof carregarListaUsuarios === 'function') carregarListaUsuarios();
+      }
+      btn.innerText = txtOriginal;
+      btn.disabled = false;
+    }).withFailureHandler(function(e) {
+      alert("❌ Falha na ligação ao servidor: " + e);
+      btn.innerText = txtOriginal;
+      btn.disabled = false;
+    }).cadastrarUsuarioAdmin(usrAtual, user, pass, nome, perm, trocaLivre);
+  }
+  // ================= FUNÇÃO DO OLHO MODERNO =================
+  // NOTA (revisão): toggleSenhaAdmin estava definida duas vezes neste arquivo (código
+  // idêntico colado duas vezes). Mantida apenas uma definição, mais abaixo.
+
+  const toBase64 = file => new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result); reader.onerror = error => reject(error); });
+  
+  async function enviarArquivosDriver() {
+    var input = document.getElementById('input-driver-files'); var files = input.files;
+    if(files.length === 0) return alert("Selecione um ficheiro.");
+    var btn = document.getElementById('btn-upload-driver'); var textElem = btn.querySelector('.btn-text');
+    btn.classList.add('carregando'); btn.disabled = true;
+    try {
+      for(var i=0; i<files.length; i++) {
+        let file = files[i]; textElem.innerText = `A enviar... (${i+1}/${files.length})`;
+        let base64Full = await toBase64(file); let base64Data = base64Full.split(',')[1]; 
+        await new Promise((resolve, reject) => { google.script.run.withSuccessHandler(res => { if(res.sucesso) resolve(); else reject(res.erro); }).withFailureHandler(reject).salvarArquivoBase64(usuarioLogado, file.name, file.type, base64Data); });
+      }
+      alert("Ficheiros enviados!");
+    } catch (e) { alert("Erro: " + e); }
+    input.value = ''; btn.classList.remove('carregando'); btn.disabled = false; textElem.innerText = "Fazer Upload"; carregarListaDriver();
+  }
+
+  // ================= ADJUSTED: DRIVER LIST (NO UNDEFINED + EXCLUDE BUTTON) =================
+  function carregarListaDriver() {
+    var lista = document.getElementById('lista-arquivos-driver'); if(!lista) return; lista.innerHTML = '<div class="vazio-msg">A carregar...</div>';
+    google.script.run.withSuccessHandler(function(arquivos) {
+      if (!arquivos || arquivos.length === 0) return lista.innerHTML = '<div class="vazio-msg">Driver vazio.</div>';
+      var html = ''; 
+      for(var i=0; i<arquivos.length; i++) { 
+        // Proteção para evitar exibir a palavra literal "undefined" se dataStr vier vazia do servidor
+        var dataExibicao = (arquivos[i].dataStr && arquivos[i].dataStr !== 'undefined') ? arquivos[i].dataStr : '';
+        var fileId = arquivos[i].id || '';
+
+        html += '<li class="item-dinamico" style="display:flex; justify-content:space-between; align-items:center; width:100%; gap:10px;">' +
+                  '<a href="' + arquivos[i].url + '" target="_blank" style="max-width:70%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">📄 ' + arquivos[i].nome + '</a>' +
+                  '<div style="display:flex; align-items:center; gap:12px; flex-shrink:0;">' +
+                    '<span>' + dataExibicao + '</span>' +
+                    '<button onclick="apagarArquivoDriver(\'' + fileId + '\')" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:14px; padding:2px;" title="Excluir arquivo">🗑️</button>' +
+                  '</div>' +
+                '</li>'; 
+      }
+      lista.innerHTML = html;
+    }).listarArquivosDriver(usuarioLogado);
+  }
+
+  // ================= NOVO (adicionado nesta revisão, não substitui nada existente) =================
+  // Cache local só de leitura da última lista de arquivos do Driver carregada, usada pela busca
+  // abaixo. Não interfere em carregarListaDriver(), que continua funcionando exatamente como
+  // antes; apenas guardamos uma cópia do resultado para poder filtrar sem chamar o servidor de
+  // novo a cada letra digitada.
+  var cacheArquivosDriver_ = [];
+
+  function renderizarListaArquivosDriver_(arquivos) {
+    var lista = document.getElementById('lista-arquivos-driver'); if(!lista) return;
+    if (!arquivos || arquivos.length === 0) { lista.innerHTML = '<div class="vazio-msg">Nenhum arquivo encontrado.</div>'; return; }
+    var html = '';
+    for(var i=0; i<arquivos.length; i++) {
+      var dataExibicao = (arquivos[i].dataStr && arquivos[i].dataStr !== 'undefined') ? arquivos[i].dataStr : '';
+      var fileId = arquivos[i].id || '';
+      html += '<li class="item-dinamico" style="display:flex; justify-content:space-between; align-items:center; width:100%; gap:10px;">' +
+                '<a href="' + arquivos[i].url + '" target="_blank" style="max-width:70%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">📄 ' + arquivos[i].nome + '</a>' +
+                '<div style="display:flex; align-items:center; gap:12px; flex-shrink:0;">' +
+                  '<span>' + dataExibicao + '</span>' +
+                  '<button onclick="apagarArquivoDriver(\'' + fileId + '\')" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:14px; padding:2px;" title="Excluir arquivo">🗑️</button>' +
+                '</div>' +
+              '</li>';
+    }
+    lista.innerHTML = html;
+  }
+
+  // Busca por nome no Driver — usa a função nova do servidor (buscarArquivosDriverPorNome).
+  // Se o campo de busca estiver vazio, volta a mostrar a lista completa (cache local).
+  function filtrarListaDriver() {
+    var campo = document.getElementById('input-busca-driver'); if (!campo) return;
+    var termo = campo.value.trim();
+    if (!termo) { renderizarListaArquivosDriver_(cacheArquivosDriver_); return; }
+    var lista = document.getElementById('lista-arquivos-driver'); if(lista) lista.innerHTML = '<div class="vazio-msg">Buscando...</div>';
+    google.script.run.withSuccessHandler(function(arquivosFiltrados) {
+      renderizarListaArquivosDriver_(arquivosFiltrados);
+    }).withFailureHandler(function(e) {
+      if(lista) lista.innerHTML = '<div class="vazio-msg">Erro na busca: ' + e + '</div>';
+    }).buscarArquivosDriverPorNome(usuarioLogado, termo);
+  }
+
+  // Estatísticas rápidas do Driver (total de arquivos + espaço ocupado), usando a função nova
+  // obterEstatisticasDriver do servidor. Preenche o resumo acima do botão de upload.
+  function carregarEstatisticasDriver() {
+    var resumo = document.getElementById('driver-stats-resumo'); if (!resumo) return;
+    google.script.run.withSuccessHandler(function(stats) {
+      if (!stats || !stats.sucesso) { resumo.innerText = ''; return; }
+      var texto = stats.totalArquivos + ' arquivo(s) · ' + stats.tamanhoFormatado;
+      if (stats.ultimoUpload) texto += ' · último envio: ' + stats.ultimoUpload;
+      resumo.innerText = texto;
+    }).withFailureHandler(function() { resumo.innerText = ''; }).obterEstatisticasDriver(usuarioLogado);
+  }
+
+  // Atualiza o cache local sempre que carregarListaDriver() (função original, intocada) terminar
+  // de buscar a lista no servidor — feito interceptando a resposta via um segundo google.script.run
+  // dedicado, que roda em paralelo sem alterar o comportamento da função original.
+  document.addEventListener("DOMContentLoaded", function() {
+    var abaAdminBtn = document.querySelector('[data-aba="admin"]');
+    if (abaAdminBtn) {
+      abaAdminBtn.addEventListener('click', function() {
+        carregarEstatisticasDriver();
+        google.script.run.withSuccessHandler(function(arquivos) { cacheArquivosDriver_ = arquivos || []; }).listarArquivosDriver(usuarioLogado);
+      });
+    }
+  });
+
+  // FUNÇÃO DE REMOÇÃO EXCLUSIVA PARA O DRIVER DA MANUTENÇÃO
+  function apagarArquivoDriver(id) {
+    if(!id || id === 'undefined' || id === 'null') {
+      return alert("❌ Erro: Não foi possível obter o identificador único deste arquivo para exclusão.");
+    }
+    if(!confirm("Tem certeza absoluta que deseja excluir este arquivo do Google Drive permanentemente?")) return;
+    
+    var lista = document.getElementById('lista-arquivos-driver'); 
+    if(lista) lista.innerHTML = '<div class="vazio-msg" style="color:#ef4444; font-weight:bold;">A excluir documento da nuvem...</div>';
+    
+    google.script.run.withSuccessHandler(function() {
+      carregarListaDriver();
+    }).withFailureHandler(function(e) { 
+      alert("Erro ao excluir: " + e); 
+      carregarListaDriver(); 
+    }).apagarArquivoDriverServidor(id);
+  }
+
+  function gerarBackup() {
+    if(!confirm("Gerar cópia de segurança exata agora?")) return;
+    var btn = document.getElementById('btn-gerar-backup'); var textElem = btn.querySelector('.btn-text');
+    btn.classList.add('carregando'); btn.disabled = true; textElem.innerText = "A guardar na nuvem...";
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem); btn.classList.remove('carregando'); btn.disabled = false; textElem.innerText = "Fazer Backup do Sistema"; carregarListaBackups();
+    }).withFailureHandler(function(e) { alert("Erro crítico: " + e); btn.classList.remove('carregando'); btn.disabled = false; textElem.innerText = "Fazer Backup do Sistema"; }).criarBackupSistema(usuarioLogado);
+  }
+
+  function carregarListaBackups() {
+    var lista = document.getElementById('lista-backups-salvos'); if(!lista) return; lista.innerHTML = '<div class="vazio-msg">A procurar...</div>';
+    google.script.run.withSuccessHandler(function(arquivos) {
+      if (!arquivos || arquivos.length === 0) return lista.innerHTML = '<div class="vazio-msg">Nenhum backup.</div>';
+      var html = ''; for(var i=0; i<arquivos.length; i++) { html += '<li class="item-dinamico"><a href="' + arquivos[i].url + '" target="_blank">🗄️ ' + arquivos[i].nome + '</a><span>' + arquivos[i].dataStr + '</span></li>'; }
+      lista.innerHTML = html;
+    }).listarBackups(usuarioLogado);
+  }
+
+  function carregarNotificacoesSenha() {
+    var divLista = document.getElementById('lista-notificacoes-admin'); 
+    if(!divLista) return;
+    divLista.innerHTML = '<p style="color:#64748b; font-style:italic; font-size: 13px;">Buscando alertas...</p>';
+    
+    google.script.run.withSuccessHandler(function(lista) {
+      if(!lista || lista.length === 0) {
+        divLista.innerHTML = '<p style="color:#10b981; font-weight: 600; font-size: 13px;">✅ Nenhuma solicitação pendente.</p>';
+        return;
+      }
+      
+      var html = '';
+      lista.forEach(function(notif) {
+        html += `
+          <div style="background:#fef3c7; border-left:4px solid #f59e0b; padding:12px; margin-bottom:10px; border-radius:6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+            <p style="margin:0; font-size:13px; color:#1e293b;">O usuário <strong>${notif.usuario}</strong> bloqueou o acesso e necessita de nova senha.</p>
+            <p style="margin:4px 0 8px 0; font-size:11px; color:#64748b;">🕒 Solicitado em: ${notif.dataHora}</p>
+            <div style="display:flex; gap:8px; flex-wrap: wrap;">
+              <button onclick="abrirModalAdminRedefinirSenha('${notif.usuario}', ${notif.linhaOrigem})" style="background:#1e3a8a; color:white; border:none; padding:6px 12px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:bold;">🔑 Mudar Senha</button>
+              <button onclick="marcarNotificacaoComoResolvida(${notif.linhaOrigem})" style="background:#cbd5e1; color:#334155; border:none; padding:6px 12px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:bold;">Ignorar</button>
+            </div>
+          </div>
+        `;
+      });
+      divLista.innerHTML = html;
+    }).listarNotificacoesSenha();
+  }
+
+  function marcarNotificacaoComoResolvida(linhaExcel) {
+    if(!confirm("Deseja rejeitar este pedido? A notificação sumirá e a senha continuará a mesma.")) return;
+    document.getElementById('lista-notificacoes-admin').innerHTML = '<p style="color:#64748b; font-size: 13px;">Descartando aviso...</p>';
+    google.script.run.withSuccessHandler(function() { 
+      carregarNotificacoesSenha(); 
+    }).resolverNotificacaoBackend(linhaExcel);
+  }
+
+  function abrirModalAdminRedefinirSenha(usuario, linha) {
+    document.getElementById('admin-reset-user').value = usuario;
+    document.getElementById('admin-reset-linha').value = linha;
+    document.getElementById('admin-reset-novasenha').value = '';
+    document.getElementById('modal-admin-redefinir-senha').style.display = 'flex';
+  }
+
+  function confirmarRedefinicaoSenhaAdmin() {
+    var usuario = document.getElementById('admin-reset-user').value;
+    var linha = document.getElementById('admin-reset-linha').value;
+    var novaSenha = document.getElementById('admin-reset-novasenha').value;
+
+    if(!novaSenha) return alert("Por favor, digite a senha nova no campo.");
+
+    var btn = document.getElementById('btn-submit-admin-reset'); 
+    var txtOriginal = btn.innerText;
+    btn.innerText = "⏳ A gravar..."; 
+    btn.disabled = true;
+
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      if(res.sucesso) { 
+        document.getElementById('modal-admin-redefinir-senha').style.display = 'none'; 
+        carregarNotificacoesSenha(); 
+      }
+      btn.innerText = txtOriginal; 
+      btn.disabled = false;
+    }).adminRedefinirSenhaUsuario(usuario, novaSenha, linha);
+  }
+
+  // A FUNÇÃO CORRETA DOS AVATARES
+  function carregarListaUsuarios() {
+    var container = document.getElementById('grid-usuarios-avatar');
+    if(!container) return;
+
+    container.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #0284c7; padding: 20px; font-weight: bold;">⏳ Comunicando com o servidor...</div>';
+
+    google.script.run
+      .withSuccessHandler(function(lista) {
+        if(lista && lista.length > 0 && lista[0].erro) {
+           container.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #b91c1c; background: #fee2e2; padding: 20px; border-radius: 8px; font-weight:bold;">' + lista[0].erro + '</div>';
+           return;
+        }
+        if(!lista || lista.length === 0) {
+          container.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #64748b; padding: 20px;">Nenhum usuário encontrado.</div>';
+          return;
+        }
+        
+        var html = '';
+        for (var i = 0; i < lista.length; i++) {
+          var u = lista[i];
+          var inicial = u.nome ? u.nome.charAt(0).toUpperCase() : '👤';
+          var isAdmin = String(u.user).toLowerCase() === 'admin';
+          var classeAvatar = isAdmin ? "avatar-circulo avatar-admin" : "avatar-circulo";
+
+          html += '<div class="card-usuario-avatar">' +
+                    '<div class="' + classeAvatar + '">' + inicial + '</div>' +
+                    '<div class="user-nome-txt" title="' + u.nome + '">' + u.nome + '</div>' +
+                    '<div class="user-login-txt">@' + u.user + '</div>' +
+                    '<div class="user-perms-tag">' + u.perms + '</div>' +
+                    '<div class="user-acoes-box">' +
+                      '<button class="btn-user-acao btn-user-edit" onclick="abrirModalEditarUsuario(' + u.id + ', \'' + u.nome + '\', \'' + u.perms + '\')">✏️ Editar</button>' +
+                      (isAdmin ? '<button class="btn-user-acao btn-user-lock" disabled>🔒 Admin</button>' : '<button class="btn-user-acao btn-user-del" onclick="excluirUsuarioBtn(' + u.id + ')">🗑️ Excluir</button>') +
+                    '</div>' +
+                  '</div>';
+        }
+        container.innerHTML = html;
+      })
+      .withFailureHandler(function(erro) {
+         container.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #b91c1c; background: #fee2e2; padding: 20px; border-radius: 8px; font-weight:bold;">❌ FALHA DE LIGAÇÃO: ' + erro + '</div>';
+      })
+      .listarUsuariosBackend();
+  }
+
+  function abrirModalEditarUsuario(id, nome, perms) {
+    document.getElementById('edit-user-id').value = id;
+    document.getElementById('edit-user-nome').value = nome;
+    document.getElementById('edit-user-perm').value = perms;
+    document.getElementById('modal-editar-usuario').style.display = 'flex';
+  }
+
+  function confirmarEdicaoUsuario() {
+    var btn = event.target; 
+    btn.innerText = "A salvar..."; 
+    btn.disabled = true;
+    var DietLinha = document.getElementById('edit-user-id').value;
+    var nome = document.getElementById('edit-user-nome').value;
+    var perms = document.getElementById('edit-user-perm').value;
+
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem); 
+      fecharModal('modal-editar-usuario'); 
+      carregarListaUsuarios();
+      btn.innerText = "💾 Salvar Alterações"; 
+      btn.disabled = false;
+    }).atualizarUsuarioBackend(DietLinha, nome, perms);
+  }
+
+  function excluirUsuarioBtn(linha) {
+    if(confirm("Tem certeza que deseja excluir este usuário permanentemente?")) {
+      google.script.run.withSuccessHandler(function(res) {
+        alert(res.mensagem); 
+        carregarListaUsuarios();
+      }).excluirUsuarioBackend(linha);
+    }
+  }
+  // Função para o Olho da Senha no Painel Admin
+  function toggleSenhaAdmin(inputId, iconeSpan) {
+    var input = document.getElementById(inputId);
+    if (input.type === "password") {
+      input.type = "text";
+      iconeSpan.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+    } else {
+      input.type = "password";
+      iconeSpan.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+    }
+  }
+</script>

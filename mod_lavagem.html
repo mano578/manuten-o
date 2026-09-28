@@ -1,0 +1,163 @@
+<style>
+  #formLavagem .grid-form { display: grid; gap: 15px; margin-bottom: 15px; }
+  #formLavagem .col-3 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  #formLavagem .col-2 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+  #formLavagem .col-1 { grid-template-columns: 1fr; }
+  #formLavagem label { display: block; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 6px; }
+  #formLavagem input, #formLavagem select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; color: #334155; background-color: #fff; box-sizing: border-box; transition: all 0.3s ease; }
+  #formLavagem input:focus, #formLavagem select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
+  #formLavagem input[readonly] { background-color: #f8fafc; color: #94a3b8; cursor: not-allowed; }
+</style>
+
+<div id="aba-lavagem" class="aba-tela">
+  <div class="conteudo-principal" style="width: 100%; max-width: 1200px; margin: 0 auto; padding: 20px;">
+    
+    <h1 class="titulo-tela">💦 Fluxo de Lavagem e Lubrificação</h1>
+    
+    <div class="admin-card" style="max-width: 800px; margin: 0 auto;">
+      <form id="formLavagem" onsubmit="enviarFormularioLavagem(event)">
+        
+        <div class="grid-form col-3">
+          <div>
+            <label>Data e Hora do Serviço *</label>
+            <input type="datetime-local" name="data" id="lav-data" required>
+          </div>
+          <div>
+            <label>Prefixo do Veículo *</label>
+            <input list="lista-prefixos-lavagem" name="prefixo" id="lav-prefixo" placeholder="Ex: C15.1002" onchange="preencherPlacaAutomatica(this.value, 'lav-placa')" autocomplete="off" required>
+            <datalist id="lista-prefixos-lavagem"></datalist>
+          </div>
+          <div>
+            <label>Placa</label>
+            <input type="text" name="placa" id="lav-placa" readonly placeholder="Auto-preenchido">
+          </div>
+        </div>
+
+        <div class="grid-form col-1">
+          <div>
+            <label>Tipo de Lavagem *</label>
+            <select name="tipoLavagem" required>
+              <option value="" disabled selected>Selecione o serviço...</option>
+              <option value="LAVAGEM">LAVAGEM</option>
+              <option value="LUBRIFICAÇÃO">LUBRIFICAÇÃO</option>
+              <option value="LIMPEZA DE BAÚ">LIMPEZA DE BAÚ</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid-form col-2">
+          <div>
+            <label>Local do Serviço *</label>
+            <select name="localLavagem" id="lav-local" onchange="verificarLocalLavagem(this.value)" required>
+              <option value="INTERNA" selected>Interna (Pátio Base)</option>
+              <option value="EXTERNA">Externa (Lava-Jato Credenciado)</option>
+            </select>
+          </div>
+          <div>
+            <label>Responsável Técnico *</label>
+            <input type="text" name="responsavel" required placeholder="Nome do operador/lavador">
+          </div>
+        </div>
+
+        <div id="grupo-valor-lavagem" style="display: none; margin-top: 15px;">
+          <label style="color:#0284c7;">Valor do Serviço Externo (R$) *</label>
+          <input type="number" step="0.01" name="valorLavagem" id="lav-valor" placeholder="Ex: 150.00" style="border: 2px solid #0ea5e9;">
+        </div>
+
+        <button type="submit" class="btn-salvar btn-azul-claro" id="btn-submit-lav" style="margin-top: 25px; width: 100%; padding: 12px; font-size: 15px; border-radius: 6px; cursor: pointer;">
+          <span class="loader-spinner"></span><span class="btn-icon">💦</span> <span class="btn-text">Salvar Registo</span>
+        </button>
+
+      </form>
+    </div>
+
+    <div class="historico-container" style="margin-top: 40px; background: white; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; margin: 30px auto 0 auto; max-width: 800px;">
+      
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+        <h3 style="margin: 0; color: #1e3a8a;">📜 Últimas Lavagens</h3>
+        <input type="text" id="busca-lavagem" onkeyup="filtrarLavagens()" placeholder="🔍 Pesquisar prefixo, placa ou funcionário..." style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%; max-width: 300px; font-size: 13px;">
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr style="background:#f8fafc; color:#475569; text-align:left; border-bottom: 2px solid #e2e8f0;">
+              <th style="padding:12px; font-size: 12px;">DATA</th>
+              <th style="padding:12px; font-size: 12px;">PREFIXO</th>
+              <th style="padding:12px; font-size: 12px;">PLACA</th>
+              <th style="padding:12px; font-size: 12px;">SERVIÇO</th>
+              <th style="padding:12px; font-size: 12px;">LAVAGEM</th>
+              <th style="padding:12px; font-size: 12px;">CUSTO</th>
+              <th style="padding:12px; font-size: 12px;">FUNCIONÁRIO</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-lista-lavagens">
+             </tbody>
+        </table>
+      </div>
+    </div>
+    
+  </div> 
+</div>
+
+<div class="modal-overlay" id="modal-detalhes-lavagem" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9998;">
+  <div class="modal-box" style="max-width: 500px; width: 95%; background: white; border-radius: 12px; padding: 25px;">
+    <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 20px;">
+      <h2 style="margin:0; color:#1e3a8a;">💦 Detalhes do Serviço</h2>
+      <button onclick="fecharModal('modal-detalhes-lavagem')" style="background:none; border:none; font-size:20px; cursor:pointer;">&times;</button>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 20px; font-size:13px;">
+      <div><strong>Prefixo:</strong> <span id="view-lav-prefixo" style="color:#1e3a8a; font-weight:bold;"></span></div>
+      <div><strong>Placa:</strong> <span id="view-lav-placa"></span></div>
+      <div><strong>Data/Hora:</strong> <span id="view-lav-data"></span></div>
+      <div><strong>Serviço:</strong> <span id="view-lav-servico"></span></div>
+      <div><strong>Local:</strong> <span id="view-lav-local"></span></div>
+      <div><strong>Custo:</strong> <span id="view-lav-custo" style="color:#059669; font-weight:bold;"></span></div>
+      <div style="grid-column: 1 / -1;"><strong>Responsável:</strong> <span id="view-lav-func"></span></div>
+    </div>
+
+    <div style="display: flex; gap: 10px;">
+      <button id="btn-lav-excluir" style="flex:1; background:#ef4444; color:white; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer;">🗑️ Excluir</button>
+      <button id="btn-lav-editar" style="flex:1; background:#3b82f6; color:white; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer;">✏️ Editar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-editar-lavagem" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999;">
+  <div class="modal-box" style="max-width: 400px; width: 95%; background: white; border-radius: 12px; padding: 25px;">
+    <h3 style="margin-top:0; color:#1e3a8a; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">✏️ Editar Serviço</h3>
+    <form id="formEditarLavagem" onsubmit="enviarEdicaoLavagem(event)">
+      <input type="hidden" id="edit-lav-linha">
+      
+      <div style="margin-bottom: 10px;">
+        <label style="font-size:12px; font-weight:bold;">Tipo de Serviço</label>
+        <select id="edit-lav-servico" style="width:100%; padding:8px; border-radius:4px; border:1px solid #cbd5e1;" required>
+          <option value="LAVAGEM">LAVAGEM</option>
+          <option value="LUBRIFICAÇÃO">LUBRIFICAÇÃO</option>
+          <option value="LIMPEZA DE BAÚ">LIMPEZA DE BAÚ</option>
+        </select>
+      </div>
+      <div style="margin-bottom: 10px;">
+        <label style="font-size:12px; font-weight:bold;">Local do Serviço</label>
+        <select id="edit-lav-local" style="width:100%; padding:8px; border-radius:4px; border:1px solid #cbd5e1;" required>
+          <option value="INTERNA">Interna (Pátio Base)</option>
+          <option value="EXTERNA">Externa (Lava-Jato)</option>
+        </select>
+      </div>
+      <div style="margin-bottom: 10px;">
+        <label style="font-size:12px; font-weight:bold;">Custo (R$)</label>
+        <input type="number" id="edit-lav-custo" step="0.01" style="width:100%; padding:8px; border-radius:4px; border:1px solid #cbd5e1;">
+      </div>
+      <div style="margin-bottom: 15px;">
+        <label style="font-size:12px; font-weight:bold;">Funcionário Responsável</label>
+        <input type="text" id="edit-lav-func" style="width:100%; padding:8px; border-radius:4px; border:1px solid #cbd5e1;" required>
+      </div>
+      
+      <div style="display:flex; gap:10px;">
+        <button type="button" onclick="fecharModal('modal-editar-lavagem')" style="flex:1; background:#94a3b8; color:white; border:none; padding:10px; border-radius:6px; cursor:pointer;">Cancelar</button>
+        <button type="submit" style="flex:1; background:#10b981; color:white; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer;">Salvar Alterações</button>
+      </div>
+    </form>
+  </div>
+</div>

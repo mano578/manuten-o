@@ -1,0 +1,698 @@
+<script>
+  // ================= VEÍCULOS E FROTA (CORRIGIDO PARA DATALIST) =================
+  function carregarFrotaParaSelects() {
+    google.script.run.withSuccessHandler(function(lista) {
+      frotaGlobal = lista; 
+      var listaOrdenada = lista.slice().sort((a,b) => a.prefixo.localeCompare(b.prefixo));
+      
+      // 1. Preparamos o visual (Exatamente igual à sua imagem da Lavagem)
+      var optionsSelect = '<option value="" disabled selected>Selecione o Prefixo...</option>'; 
+      var optionsDatalist = ''; 
+      
+      for(var i = 0; i < listaOrdenada.length; i++) { 
+          var pref = listaOrdenada[i].prefixo;
+          var placa = listaOrdenada[i].placa || 'Sem Placa';
+          
+          // Para o <select> padrão (Fallback)
+          optionsSelect += '<option value="' + pref + '">' + pref + ' | ' + placa + '</option>';
+          
+          // Para o <datalist> moderno (Cria as duas linhas: Prefixo em cima, Placa embaixo)
+          optionsDatalist += '<option value="' + pref + '">' + placa + '</option>';
+      }
+
+      // 2. Procuramos todos os campos do sistema
+      var camposParaAtualizar = ['sos-prefixo', 'lav-prefixo', 'abs-prefixo'];
+
+      camposParaAtualizar.forEach(function(id) {
+          var elemento = document.getElementById(id);
+          if (elemento) {
+              
+              // Se for um dropdown antigo (<select>)
+              if (elemento.tagName === 'SELECT') {
+                  elemento.innerHTML = optionsSelect;
+              } 
+              
+              // Se for um campo de busca moderno (<input>)
+              else if (elemento.tagName === 'INPUT') {
+                  // O Segredo: O input não recebe <option> no innerHTML, ele precisa de um <datalist> conectado!
+                  var listId = elemento.getAttribute('list');
+                  
+                  if (!listId) {
+                      // Se o input perdeu o atributo 'list', nós forçamos a ligação automática!
+                      listId = 'lista-automatica-' + id;
+                      elemento.setAttribute('list', listId);
+                  }
+                  
+                  var datalist = document.getElementById(listId);
+                  if (!datalist) {
+                      datalist = document.createElement('datalist');
+                      datalist.id = listId;
+                      document.body.appendChild(datalist);
+                  }
+                  
+                  // Agora sim, injetamos as opções no sítio certo!
+                  datalist.innerHTML = optionsDatalist;
+              }
+          }
+      });
+    }).listarVeiculosCadastrados();
+  }
+// ================= SISTEMA DE EDIÇÃO DE FROTA =================
+
+function exibirEspelhoVeiculo(prefixoSelecionado) {
+  // Procura o veículo na lista de frota já baixada
+  var veiculo = frotaGlobal.find(v => String(v.prefixo).toUpperCase() === String(prefixoSelecionado).toUpperCase());
+  if(!veiculo) return alert("Veículo não encontrado na memória.");
+
+  document.getElementById('view-veic-prefixo').innerText = veiculo.prefixo;
+  document.getElementById('view-veic-placa').innerText = veiculo.placa;
+
+  // Lógica do botão Excluir
+  document.getElementById('btn-veic-excluir').onclick = function() {
+    if(confirm("⚠️ ATENÇÃO: Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o veículo " + veiculo.prefixo + "?")) {
+      fecharModal('modal-detalhes-veiculo');
+      acionarExcluirVeiculo(veiculo.prefixo);
+    }
+  };
+
+  // Lógica do botão Editar
+  document.getElementById('btn-veic-editar').onclick = function() {
+    fecharModal('modal-detalhes-veiculo');
+    abrirModalEditarVeiculo(veiculo);
+  };
+
+  document.getElementById('modal-detalhes-veiculo').style.display = 'flex';
+}
+
+// NOTA (revisão): acionarExcluirVeiculo, abrirModalEditarVeiculo e enviarEdicaoVeiculo
+// estavam definidas duas vezes neste arquivo. Este primeiro bloco só preenchia
+// prefixo/placa (incompleto); o bloco definido mais abaixo também preenche
+// marca/ano/chassi/renavam/motor/categoria e era o que realmente executava em
+// runtime (última definição vence em JS). Removido para eliminar o código morto.
+// preencherPlacaAutomatica também estava duplicada aqui e em JS_Lavagem.html — agora
+// vive como função única e compartilhada em JS_Global.html.
+
+  function carregarListaVeiculos() {
+    var tbody = document.getElementById('tbody-lista-veiculos'); 
+    if(!tbody) return;
+    
+    if (!frotaGlobal || frotaGlobal.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="vazio-msg">A carregar lista do banco de dados...</td></tr>';
+    }
+    
+    google.script.run.withSuccessHandler(function(lista) { 
+      frotaGlobal = lista; 
+      frotaFiltrada = [...frotaGlobal]; 
+      if(!ordenacaoAtual.coluna) { ordenacaoAtual.coluna = 'prefixo'; ordenacaoAtual.direcao = 'asc'; }
+      aplicarOrdenacaoArray(); 
+      atualizarVisuaisDeOrdenacao(ordenacaoAtual.coluna);
+    }).listarVeiculosCadastrados();
+  }
+
+ // 1. A FUNÇÃO ATUALIZADA COM COMPONENTE DA PLACA MERCOSUL REALISTA
+  function renderizarTabelaFrota() {
+    var tbody = document.getElementById('tbody-lista-veiculos'); 
+    var grid = document.getElementById('grid-lista-veiculos');
+    if(!tbody || !grid) return;
+    
+    if (!frotaFiltrada || frotaFiltrada.length === 0) { 
+      tbody.innerHTML = '<tr><td colspan="6" class="vazio-msg">Nenhum veículo encontrado.</td></tr>'; 
+      grid.innerHTML = '<div class="vazio-msg" style="grid-column: 1 / -1; padding: 20px;">Nenhum veículo encontrado.</div>';
+      return; 
+    }
+    
+    var htmlTabela = '';
+    var htmlCards = '';
+    
+    for (var i = 0; i < frotaFiltrada.length; i++) {
+      var v = frotaFiltrada[i]; 
+      
+      var classeTag = 'tag-cat';
+      var txtStatus = (v.status || 'ATIVO').toUpperCase();
+      // NOTA (revisão 7): status agora pode ser ATIVO, DEVOLVIDO ou EMPRESTADO (campo novo,
+      // pedido pelo usuário). EMPRESTADO reaproveita a classe visual "compactador" (laranja) e
+      // DEVOLVIDO reaproveita "inativo" (cinza/vermelho), para não precisar de CSS novo.
+      if(txtStatus === 'LIBERADO' || txtStatus === 'ATIVO') classeTag += ' ativo';
+      else if(txtStatus === 'EMPRESTADO' || txtStatus.includes('MANUTENÇÃO') || txtStatus === 'RETIDO') classeTag += ' compactador';
+      else classeTag += ' inativo'; // cobre DEVOLVIDO e qualquer outro status
+
+      // ================= TABELA ORIGINAL =================
+      htmlTabela += '<tr onclick="abrirModalVeiculo(' + v.originalIndex + ')" style="cursor:pointer; transition:0.2s;" onmouseover="this.style.background=\'#f1f5f9\'" onmouseout="this.style.background=\'transparent\'">' +
+              '<td><strong>' + v.prefixo + '</strong></td>' +
+              '<td>' + v.placa + '</td>' +
+              '<td>' + (v.marcaModelo || '-') + '</td>' +
+              '<td>' + v.ano + '</td>' +
+              '<td><span class="' + classeTag + '" onclick="abrirEdicaoRapidaStatus(event, ' + v.originalIndex + ')" style="cursor:pointer;" title="Clique para alterar o status">' + txtStatus + '</span></td>' +
+              '</tr>';
+
+      // ================= CARDS DE ALTA QUALIDADE COM PLACA MERCOSUL =================
+      var imagemHTML = obterImagemVeiculoPremium(v.categoria);
+      
+      // Padronização e Limpeza da Placa (Remove traços ou espaços residuais)
+      var placaLimpa = String(v.placa).toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
+      
+      htmlCards += `
+      <div class="card-veiculo" onclick="abrirModalVeiculo(${v.originalIndex})">
+          
+          <div class="card-veiculo-imagem">
+              ${imagemHTML}
+          </div>
+          
+          <div class="card-veiculo-info">
+              <div class="card-veiculo-linha1">
+                  <div class="card-veiculo-titulos" style="display: flex; flex-direction: column; gap: 8px;">
+                      <span style="font-size: 20px; font-weight: 800; color: #1e293b; letter-spacing: -0.5px;">${v.prefixo}</span>
+                      
+                      <div class="placa-mercosul" style="display: inline-flex; flex-direction: column; width: 145px; height: 48px; background-color: #ffffff; border: 2px solid #000000; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.15); overflow: hidden; position: relative; box-sizing: border-box;">
+                        <div class="placa-header" style="width: 100%; height: 13px; background-color: #0033a0; display: flex; align-items: center; justify-content: center; position: relative; box-sizing: border-box;">
+                          <span class="sigla-br" style="position: absolute; left: 5px; color: #ffffff; font-family: 'Arial', sans-serif; font-size: 7px; font-weight: bold;">BR</span>
+                          <span class="txt-brasil" style="color: #ffffff; font-family: 'Arial', sans-serif; font-size: 8px; font-weight: bold; letter-spacing: 1.5px;">BRASIL</span>
+                          <span class="bandeira-br" style="position: absolute; right: 5px; font-size: 9px; line-height: 1;">🇧🇷</span>
+                        </div>
+                        <div class="placa-body" style="flex: 1; display: flex; align-items: center; justify-content: center; position: relative; background-color: #ffffff; padding: 0 2px;">
+                          <div class="marca-lateral" style="position: absolute; left: 4px; font-family: 'Arial', sans-serif; font-size: 6px; font-weight: bold; color: #94a3b8; line-height: 1;">BR</div>
+                          <div class="codigo-placa" style="font-family: 'Arial Black', 'Impact', sans-serif; font-size: 19px; font-weight: 900; color: #000000; letter-spacing: -0.3px; text-align: center; text-transform: uppercase; width: 100%; line-height: 1;">${placaLimpa}</div>
+                        </div>
+                      </div>
+                  </div>
+                  <span class="${classeTag}" onclick="abrirEdicaoRapidaStatus(event, ${v.originalIndex})" style="align-self: flex-start; cursor:pointer;" title="Clique para alterar o status">${txtStatus}</span>
+              </div>
+              
+              <div class="card-veiculo-linha-detalhes" style="margin-top: 8px;">
+                  <div class="detalhe-item">
+                      <i class="fa-solid fa-truck"></i> ${v.marcaModelo || 'Sem Modelo'}
+                  </div>
+                  <div class="detalhe-item">
+                      <i class="fa-regular fa-calendar"></i> ${v.ano || '-'}
+                  </div>
+              </div>
+              
+              <div class="card-veiculo-linha-detalhes">
+                  <div class="detalhe-item">
+                      <i class="fa-solid fa-tag"></i> ${v.categoria}
+                  </div>
+              </div>
+          </div>
+          
+          <div class="card-veiculo-acoes">
+              <button class="btn-acao-rapida" title="Editar" onclick="event.stopPropagation(); abrirModalEditarVeiculoDaLista(${v.originalIndex})">
+                  <i class="fa-solid fa-pen"></i>
+              </button>
+              <button class="btn-acao-rapida" title="Visualizar" onclick="event.stopPropagation(); abrirModalVeiculo(${v.originalIndex})">
+                  <i class="fa-solid fa-eye"></i>
+              </button>
+          </div>
+      </div>`;
+    }
+    
+    tbody.innerHTML = htmlTabela;
+    grid.innerHTML = htmlCards;
+  }
+  // Função do Lápis para abrir edição direta
+  function abrirModalEditarVeiculoDaLista(index) {
+     var v = frotaGlobal.find(item => item.originalIndex === index);
+     if(v) abrirModalEditarVeiculo(v);
+  }
+
+  // NOVA FUNÇÃO (revisão 8): abre um modal pequeno e rápido para trocar só o Status do
+  // veículo (ATIVO/DEVOLVIDO/EMPRESTADO), acionada ao clicar direto na badge de status na
+  // tabela ou no card — sem precisar abrir o card completo e depois clicar em "Editar".
+  function abrirEdicaoRapidaStatus(event, index) {
+    if (event) event.stopPropagation();
+    var v = frotaGlobal.find(item => item.originalIndex === index);
+    if (!v) return;
+    document.getElementById('status-rapido-prefixo').innerText = v.prefixo;
+    document.getElementById('status-rapido-prefixo-real').value = v.prefixo;
+    document.getElementById('status-rapido-select').value = (v.status || 'ATIVO').toUpperCase();
+    document.getElementById('modal-status-rapido').style.display = 'flex';
+  }
+
+  // NOVA FUNÇÃO (revisão 8): confirma a troca rápida de Status, chamando
+  // atualizarStatusVeiculoBackend — que grava só a coluna de Status (Z) e nunca toca na
+  // Categoria nem em qualquer outro campo do veículo, evitando o bug de apagar a Categoria.
+  function confirmarStatusRapido() {
+    var prefixo = document.getElementById('status-rapido-prefixo-real').value;
+    var novoStatus = document.getElementById('status-rapido-select').value;
+    var btn = document.getElementById('btn-status-rapido-salvar');
+    var txt = btn.innerText; btn.innerText = "⏳ A salvar..."; btn.disabled = true;
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      btn.innerText = txt; btn.disabled = false;
+      if (res.sucesso) {
+        fecharModal('modal-status-rapido');
+        if (typeof carregarListaVeiculos === 'function') carregarListaVeiculos();
+        if (typeof carregarFrotaParaSelects === 'function') carregarFrotaParaSelects();
+      }
+    }).withFailureHandler(function(erro) {
+      alert("❌ Falha de comunicação com o servidor.");
+      btn.innerText = txt; btn.disabled = false;
+    }).atualizarStatusVeiculoBackend(prefixo, novoStatus);
+  }
+// 2. FUNÇÃO QUE CHAMA AS IMAGENS PNG DA NUVEM
+  function obterImagemVeiculoPremium(categoria) {
+    var cat = String(categoria).toUpperCase();
+    
+    // Ligações diretas para a CDN do Icons8 (Imagens coloridas de alta qualidade)https://drive.google.com/file/d//view?usp=drive_link
+    // Se no futuro você quiser usar a SUAS próprias imagens, basta trocar os links 'https...' pelo código Base64 ou pelo link do seu Google Drive.
+    
+    if (cat.includes('CAÇAMBA')) {
+        return '<img src="https://lh3.googleusercontent.com/d/1bn_ZpBCgqb_V2EqLe4yrLCVv69SPgDWv?.png" alt="Caçamba">';
+    } else if (cat.includes('COMPACTADOR')) {
+        return '<img src="https://lh3.googleusercontent.com/d/1xXiV8s_RwdU4QAVkIXsHAV6Z-2aq-B8O?.png" alt="Compactador">';
+    } else if (cat.includes('ONIBUS') || cat.includes('ÔNIBUS') || cat.includes('VAN') || cat.includes('MICRO')) {
+        return '<img src="https://lh3.googleusercontent.com/d/11DQjZJV9-i7QrlFEB2URxli8r4U4_8Sj?.png" alt="Ônibus">';
+    } else if (cat.includes('RETRO')) {
+        return '<img src="https://lh3.googleusercontent.com/d/10nWbHBXBXe8dHxXBW-4S69wk1WLkRsZt?.png" alt="RETRO">';
+    } else if (cat.includes('MOTO')) {
+        return '<img src="https://lh3.googleusercontent.com/d/12XlA1RTLbvkBJ_1Nj1dpLVXcTnt95P4t?.png" alt="Moto">';
+    } else if (cat.includes('BOMBONA')) {
+        return '<img src="https://lh3.googleusercontent.com/d/1_TtblTou6OxVnd3zSYK-xeC6TItblTCj?.png" alt="BOMBONA">';
+    } else if (cat.includes('CARROCERIA')) {
+        return '<img src="https://lh3.googleusercontent.com/d/1gCKzVG5maGZLDy30UtFitiyIL7iAb8Ns?.png" alt="CARROCERIA">';
+    } else if (cat.includes('MÁQUINA P')) {
+        return '<img src="https://lh3.googleusercontent.com/d/117eR4h0EVs30yrW6jugRBIprDzwDrLIy?.png" alt="MÁQUINA P">';
+    } else if (cat.includes('REBOQUE')) {
+        return '<img src="https://lh3.googleusercontent.com/d/1qm5pj7Q8njEEafbSExb5LomsrIGaDzy-?.png" alt="REBOQUE">';
+    } else if (cat.includes('TRITURADOR')) {
+        return '<img src="https://lh3.googleusercontent.com/d/1PGC4miFF-lg2dzLzeVIt4ZOOrQnfD-KI?.png" alt="TRITURADOR">';
+    } else if (cat.includes('KWID')) {
+        return '<img src="https://lh3.googleusercontent.com/d/1ADhm7ftEYwamvY-ycfVBx8C-OMJYKRQ1?.png" alt="KWID">';
+    } else if (cat.includes('SAVEIRO')) {
+        return '<img src="https://lh3.googleusercontent.com/d/10UXB87nKDfnH6ycnrQYCdrR6nEtjmhZr?.png" alt="SAVEIRO">';
+    } else if (cat.includes('T-CROSS')) {
+        return '<img src="https://lh3.googleusercontent.com/d/1p7i2nU-8ia1Y1coEe55W2lDy2Jydy80_?.png" alt="T-CROSS">';
+    } else if (cat.includes('POLO')) {
+        return '<img src="https://lh3.googleusercontent.com/d/1VmLNG6eeQ8aZiJ1kiF4vN6N3q4YWQNyh?.png" alt="POLO">';
+    } else if (cat.includes('PULSE')) {
+        return '<img src="https://lh3.googleusercontent.com/d/1nK5BHnG_mvoXisWJTy01CK1ZoNyLS7am?.png" alt="PULSE">';
+    } else if (cat.includes('SANEADORA')) {
+        return '<img src="https://lh3.googleusercontent.com/d/19kodD63JD6pu2S15YiXE--J1_hbsoPow?.png" alt="SANEADORA">';
+    } else if (cat.includes('HARPIA')) {
+        return '<img src="https://lh3.googleusercontent.com/d/1qPl1qW_FiSJME69Ou59VepWdF6LCdofH?.png" alt="HARPIA">';
+    } else if (cat.includes('CACAMBA 6M')) {
+        return '<img src="https://lh3.googleusercontent.com/d/1Izvsv7N-vqf-5uOUtaFzT76XT9zZ6wjS?.png" alt="CACAMBA 6M">';
+    } else if (cat.includes('VARREDEIRA')) {
+        return '<img src="https://lh3.googleusercontent.com/d/1azNwHEUMdnSNxG8I27guSZnps0FWDszH?.png" alt="VARREDEIRA">';
+    } else {
+        // Padrão Caminhão Baú / Comum
+        return '<img src="https://img.icons8.com/color/96/truck.png" alt="Caminhão">';
+    }
+  }
+  // 2. FUNÇÃO QUE DESENHA OS VETORES REALISTAS EM ALTA QUALIDADE
+  function obterSvgVeiculoAltaQualidade(categoria) {
+    var cat = String(categoria).toUpperCase();
+    
+    // ================= BASCULANTE / CAÇAMBA =================
+    if (cat.includes('CAÇAMBA') || cat.includes('BASCULANTE') || cat.includes('CACAMBA')) {
+        return `<svg viewBox="0 0 120 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M42 15 h65 l5 27 H42 z" fill="#cbd5e1" stroke="#1e293b" stroke-width="2.5" stroke-linejoin="round"/>
+                  <line x1="60" y1="15" x2="60" y2="42" stroke="#1e293b" stroke-width="2"/>
+                  <line x1="80" y1="15" x2="80" y2="42" stroke="#1e293b" stroke-width="2"/>
+                  <rect x="12" y="44" width="98" height="5" fill="#334155"/>
+                  <path d="M40 44 V18 c0-2 -2-3 -4-3 H25 c-3 0 -6 2 -8 5 l-5 8 v16 z" fill="#ffffff" stroke="#1e293b" stroke-width="2.5" stroke-linejoin="round"/>
+                  <path d="M38 20 H25 c-2 0 -4 1 -5 3 l-3 5 h21 z" fill="#e0f2fe" stroke="#1e293b" stroke-width="2" stroke-linejoin="round"/>
+                  <line x1="32" y1="33" x2="36" y2="33" stroke="#1e293b" stroke-width="2" stroke-linecap="round"/>
+                  <rect x="10" y="36" width="4" height="6" fill="#fbbf24" stroke="#1e293b" stroke-width="1.5"/>
+                  <rect x="8" y="42" width="6" height="4" fill="#475569" stroke="#1e293b" stroke-width="1.5"/>
+                  <circle cx="75" cy="52" r="8" fill="#1e293b"/><circle cx="75" cy="52" r="3" fill="#cbd5e1"/>
+                  <circle cx="95" cy="52" r="8" fill="#1e293b"/><circle cx="95" cy="52" r="3" fill="#cbd5e1"/>
+                  <circle cx="25" cy="52" r="8" fill="#1e293b"/><circle cx="25" cy="52" r="3" fill="#cbd5e1"/>
+                </svg>`;
+    } 
+    // ================= COMPACTADOR =================
+    else if (cat.includes('COMPACTADOR')) {
+         return `<svg viewBox="0 0 120 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M42 12 h45 c 0 0, 20 0, 25 15 l 2 15 H42 z" fill="#f8fafc" stroke="#1e293b" stroke-width="2.5" stroke-linejoin="round"/>
+                  <path d="M87 12 v30" stroke="#1e293b" stroke-width="2.5"/>
+                  <path d="M87 20 l 20 5" stroke="#1e293b" stroke-width="1.5"/>
+                  <rect x="12" y="44" width="98" height="5" fill="#334155"/>
+                  <path d="M40 44 V18 c0-2 -2-3 -4-3 H25 c-3 0 -6 2 -8 5 l-5 8 v16 z" fill="#ffffff" stroke="#1e293b" stroke-width="2.5" stroke-linejoin="round"/>
+                  <path d="M38 20 H25 c-2 0 -4 1 -5 3 l-3 5 h21 z" fill="#e0f2fe" stroke="#1e293b" stroke-width="2" stroke-linejoin="round"/>
+                  <line x1="32" y1="33" x2="36" y2="33" stroke="#1e293b" stroke-width="2" stroke-linecap="round"/>
+                  <rect x="10" y="36" width="4" height="6" fill="#fbbf24" stroke="#1e293b" stroke-width="1.5"/>
+                  <rect x="8" y="42" width="6" height="4" fill="#475569" stroke="#1e293b" stroke-width="1.5"/>
+                  <circle cx="75" cy="52" r="8" fill="#1e293b"/><circle cx="75" cy="52" r="3" fill="#cbd5e1"/>
+                  <circle cx="95" cy="52" r="8" fill="#1e293b"/><circle cx="95" cy="52" r="3" fill="#cbd5e1"/>
+                  <circle cx="25" cy="52" r="8" fill="#1e293b"/><circle cx="25" cy="52" r="3" fill="#cbd5e1"/>
+                </svg>`;
+    }
+    // ================= CAMINHÃO BAÚ (COMUM) =================
+    else if (cat.includes('COMUM') || cat.includes('BAU') || cat.includes('BAÚ')) {
+         return `<svg viewBox="0 0 120 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="42" y="10" width="70" height="32" fill="#ffffff" stroke="#1e293b" stroke-width="2.5" stroke-linejoin="round"/>
+                  <rect x="45" y="14" width="64" height="24" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+                  <rect x="12" y="44" width="98" height="5" fill="#334155"/>
+                  <path d="M40 44 V18 c0-2 -2-3 -4-3 H25 c-3 0 -6 2 -8 5 l-5 8 v16 z" fill="#ffffff" stroke="#1e293b" stroke-width="2.5" stroke-linejoin="round"/>
+                  <path d="M38 20 H25 c-2 0 -4 1 -5 3 l-3 5 h21 z" fill="#e0f2fe" stroke="#1e293b" stroke-width="2" stroke-linejoin="round"/>
+                  <line x1="32" y1="33" x2="36" y2="33" stroke="#1e293b" stroke-width="2" stroke-linecap="round"/>
+                  <rect x="10" y="36" width="4" height="6" fill="#fbbf24" stroke="#1e293b" stroke-width="1.5"/>
+                  <circle cx="85" cy="52" r="8" fill="#1e293b"/><circle cx="85" cy="52" r="3" fill="#cbd5e1"/>
+                  <circle cx="25" cy="52" r="8" fill="#1e293b"/><circle cx="25" cy="52" r="3" fill="#cbd5e1"/>
+                </svg>`;
+    }
+    // ================= FALLBACK: CARRO =================
+    else {
+         return `<svg viewBox="0 0 100 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M20 40 L15 30 L25 20 H60 L75 30 L85 40 Z" fill="#ffffff" stroke="#1e293b" stroke-width="2.5" stroke-linejoin="round"/>
+                  <path d="M30 22 H55 L65 30 H22 Z" fill="#e0f2fe" stroke="#1e293b" stroke-width="2" stroke-linejoin="round"/>
+                  <circle cx="30" cy="45" r="7" fill="#1e293b"/><circle cx="30" cy="45" r="2.5" fill="#cbd5e1"/>
+                  <circle cx="70" cy="45" r="7" fill="#1e293b"/><circle cx="70" cy="45" r="2.5" fill="#cbd5e1"/>
+                </svg>`;
+    }
+  }
+
+  // 3. FUNÇÃO DE ALTERNAR TELAS
+  function mudarVisualizacaoFrota(tipo) {
+    var botoes = event.currentTarget.parentElement.querySelectorAll('.btn-view-toggle');
+    botoes.forEach(function(btn){ btn.classList.remove('ativo'); btn.style.background='white'; btn.style.color='#475569'; btn.style.borderColor='#cbd5e1'; });
+    
+    var btn = event.currentTarget;
+    btn.classList.add('ativo'); btn.style.background='#3b82f6'; btn.style.color='white'; btn.style.borderColor='#3b82f6';
+    
+    if(tipo === 'cards'){
+      document.getElementById('grid-lista-veiculos').style.display = 'grid';
+      document.getElementById('tabela-lista-veiculos').style.display = 'none';
+    } else {
+      document.getElementById('grid-lista-veiculos').style.display = 'none';
+      document.getElementById('tabela-lista-veiculos').style.display = 'block';
+    }
+  }
+
+  // ================= ADICIONE AS DUAS FUNÇÕES DE CONTROLE ABAIXO =================
+
+  // Defina esta função no final do arquivo js_frota.html
+  function obterIconeVeiculo(categoria) {
+    var cat = String(categoria).toUpperCase();
+    if (cat.includes('MOTO')) {
+        return '<i class="fa-solid fa-motorcycle"></i>';
+    } else if (cat.includes('COMPACTADOR')) {
+        return '<i class="fa-solid fa-truck"></i>';
+    } else if (cat.includes('CAÇAMBA') || cat.includes('BASCULANTE') || cat.includes('CARROCERIA')) {
+        return '<i class="fa-solid fa-truck-moving"></i>';
+    } else if (cat.includes('ONIBUS') || cat.includes('ÔNIBUS') || cat.includes('VAN')) {
+        return '<i class="fa-solid fa-bus"></i>';
+    } else if (cat.includes('TRATOR') || cat.includes('MÁQUINA') || cat.includes('RETRO') || cat.includes('VARREDEIRA')) {
+        return '<i class="fa-solid fa-tractor"></i>';
+    } else {
+        return '<i class="fa-solid fa-car-side"></i>';
+    }
+  }
+
+
+
+  function manipularBuscaFrota() {
+    var input = document.getElementById("input-busca-frota").value.toUpperCase();
+    frotaFiltrada = frotaGlobal.filter(v => (v.prefixo + " " + v.placa + " " + v.marcaModelo + " " + v.ano + " " + v.categoria).toUpperCase().indexOf(input) > -1);
+    if(ordenacaoAtual.coluna !== '') aplicarOrdenacaoArray(); else renderizarTabelaFrota();
+  }
+
+  function ordenarTabela(coluna) {
+    if (ordenacaoAtual.coluna === coluna) { ordenacaoAtual.direcao = ordenacaoAtual.direcao === 'asc' ? 'desc' : 'asc'; } else { ordenacaoAtual.coluna = coluna; ordenacaoAtual.direcao = 'asc'; }
+    atualizarVisuaisDeOrdenacao(coluna); aplicarOrdenacaoArray();
+  }
+
+  function aplicarOrdenacaoArray() {
+    var col = ordenacaoAtual.coluna; var dir = ordenacaoAtual.direcao;
+    frotaFiltrada.sort((a,b) => { var valA = a[col] ? a[col].toString().toUpperCase() : ""; var valB = b[col] ? b[col].toString().toUpperCase() : ""; if (valA < valB) return dir === 'asc' ? -1 : 1; if (valA > valB) return dir === 'asc' ? 1 : -1; return 0; });
+    renderizarTabelaFrota();
+  }
+
+  function atualizarVisuaisDeOrdenacao(colunaClicada) {
+    document.querySelectorAll('#tabela-frota-principal th').forEach(th => { th.classList.remove('ordenada'); th.querySelector('.sort-icon').innerText = '⇅'; });
+    var thAtivo = document.getElementById('th-' + colunaClicada); if (thAtivo) { thAtivo.classList.add('ordenada'); thAtivo.querySelector('.sort-icon').innerText = ordenacaoAtual.direcao === 'asc' ? '↑' : '↓'; }
+  }
+
+  function gerarBotaoLink(url, iconeTexto) {
+    if (!url || url.trim() === "") return "";
+    if (url.toString().trim().startsWith("http")) return '<a href="'+url+'" target="_blank" class="btn-link-doc">' + iconeTexto + '</a>';
+    return '<span class="btn-link-doc">🔒 ' + iconeTexto + '</span>';
+  }
+
+  let veiculoSelecionadoParaEdicao = null;
+
+  function abrirModalVeiculo(indexOriginal) {
+    var v = frotaGlobal.find(item => item.originalIndex === indexOriginal); if(!v) return;
+    veiculoSelecionadoParaEdicao = v; 
+
+    // Preenche dados técnicos
+    document.getElementById('mod-prefixo').innerText = v.prefixo + " | " + v.placa; 
+    var catElem = document.getElementById('mod-cat'); catElem.innerText = v.categoria;
+    if(v.categoria === "COMPACTADOR") catElem.classList.add('compactador'); else catElem.classList.remove('compactador');
+    document.getElementById('mod-marca').innerText = v.marcaModelo || "-"; document.getElementById('mod-ano').innerText = v.ano; document.getElementById('mod-chassi').innerText = v.chassi || "-"; document.getElementById('mod-renavam').innerText = v.renavam || "-"; document.getElementById('mod-motor').innerText = v.motor || "-"; document.getElementById('mod-eixos').innerText = (v.eixos || "-") + " / " + (v.rodado || "-"); document.getElementById('mod-inicio').innerText = v.inicioOperacao || "-";
+    
+    var equipDiv = document.getElementById('mod-equip-area');
+    if (v.categoria === "COMPACTADOR") { equipDiv.style.display = 'block'; document.getElementById('mod-tipo-eq').innerText = v.tipoEquipamento || "-"; document.getElementById('mod-cap-eq').innerText = v.capacidade || "-"; document.getElementById('mod-forn').innerText = v.fornecedor || "-"; } else equipDiv.style.display = 'none';
+    
+    renderizarGerenciadorAnexosVeiculo(v);
+
+    // Ligar o Botão de Excluir
+    var btnExcluir = document.getElementById('btn-veic-excluir');
+    if(btnExcluir) {
+      btnExcluir.onclick = function() {
+        if(confirm("⚠️ ATENÇÃO: Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o veículo " + v.prefixo + "?")) {
+          fecharModal('modal-detalhes');
+          acionarExcluirVeiculo(v.prefixo);
+        }
+      };
+    }
+
+    // Ligar o Botão de Editar
+    var btnEditar = document.getElementById('btn-veic-editar');
+    if(btnEditar) {
+      btnEditar.onclick = function() {
+        fecharModal('modal-detalhes');
+        abrirModalEditarVeiculo(v);
+      };
+    }
+
+    document.getElementById('modal-detalhes').style.display = 'flex';
+  }
+
+  function acionarExcluirVeiculo(prefixo) {
+    google.script.run.withSuccessHandler(function(res){
+      alert(res.mensagem);
+      if(typeof carregarListaVeiculos === 'function') carregarListaVeiculos(); 
+      if(typeof carregarFrotaParaSelects === 'function') carregarFrotaParaSelects(); 
+    }).excluirVeiculoBackendPorPrefixo(prefixo);
+  }
+
+  function abrirModalEditarVeiculo(veiculo) {
+    // 1. Guarda a chave principal (Prefixo) invisível para o sistema não se perder
+    document.getElementById('edit-veic-prefixo-antigo').value = veiculo.prefixo || "";
+    
+    // 2. Preenche todos os campos com os dados da memória
+    document.getElementById('edit-veic-prefixo').value = veiculo.prefixo || "";
+    document.getElementById('edit-veic-placa').value = veiculo.placa || "";
+    document.getElementById('edit-veic-marca').value = veiculo.marcaModelo || "";
+    document.getElementById('edit-veic-ano').value = veiculo.ano || "";
+    document.getElementById('edit-veic-chassi').value = veiculo.chassi || "";
+    document.getElementById('edit-veic-renavam').value = veiculo.renavam || "";
+    document.getElementById('edit-veic-motor').value = veiculo.motor || "";
+    
+    // CORREÇÃO (revisão 8): o <select> de Categoria só tinha as opções fixas COMUM,
+    // COMPACTADOR e MÁQUINA. Se o veículo tivesse qualquer outro valor gravado na planilha
+    // (espaço extra, acento diferente, valor antigo, etc.), `catSelect.value = veiculo.categoria`
+    // não encontrava opção correspondente e o navegador zerava a seleção (fica em branco, sem
+    // avisar). Ao salvar, esse campo vazio era enviado e sobrescrevia a Categoria na planilha —
+    // era exatamente esse o bug relatado ("ao mudar o Status, apaga a Categoria"). Agora, se o
+    // valor atual do veículo não existir entre as opções, ele é adicionado dinamicamente ao
+    // select antes de selecioná-lo, então o valor real nunca se perde.
+    var catSelect = document.getElementById('edit-veic-categoria');
+    if (catSelect) {
+      var catAtual = String(veiculo.categoria || "COMUM").toUpperCase().trim();
+      var opcaoExiste = Array.prototype.some.call(catSelect.options, function(op) { return op.value === catAtual; });
+      if (!opcaoExiste && catAtual) {
+        var novaOpcao = document.createElement('option');
+        novaOpcao.value = catAtual;
+        novaOpcao.text = catAtual;
+        catSelect.appendChild(novaOpcao);
+      }
+      catSelect.value = catAtual;
+    }
+
+    // NOVO CAMPO (revisão 7): status do veículo (ATIVO/DEVOLVIDO/EMPRESTADO)
+    var statusSelect = document.getElementById('edit-veic-status');
+    if (statusSelect) statusSelect.value = (veiculo.status || "ATIVO").toUpperCase();
+
+    document.getElementById('modal-editar-veiculo').style.display = 'flex';
+  }
+
+  function enviarEdicaoVeiculo(event) {
+    event.preventDefault();
+    var prefixoAntigo = document.getElementById('edit-veic-prefixo-antigo').value;
+    
+    // Agrupa TODAS as alterações
+    var dados = {
+      prefixo: document.getElementById('edit-veic-prefixo').value,
+      placa: document.getElementById('edit-veic-placa').value,
+      marcaModelo: document.getElementById('edit-veic-marca').value,
+      ano: document.getElementById('edit-veic-ano').value,
+      chassi: document.getElementById('edit-veic-chassi').value,
+      renavam: document.getElementById('edit-veic-renavam').value,
+      motor: document.getElementById('edit-veic-motor').value,
+      categoria: document.getElementById('edit-veic-categoria').value,
+      // NOVO CAMPO (revisão 7): status do veículo (ATIVO/DEVOLVIDO/EMPRESTADO)
+      status: (document.getElementById('edit-veic-status') ? document.getElementById('edit-veic-status').value : "ATIVO")
+    };
+
+    var btn = event.submitter || document.querySelector('#formEditarVeiculo button[type="submit"]');
+    var txt = btn.innerText;
+    btn.innerText = "⏳ A guardar..."; btn.disabled = true;
+
+    google.script.run.withSuccessHandler(function(res){
+      alert(res.mensagem);
+      fecharModal('modal-editar-veiculo');
+      if(typeof carregarListaVeiculos === 'function') carregarListaVeiculos();
+      if(typeof carregarFrotaParaSelects === 'function') carregarFrotaParaSelects();
+      btn.innerText = txt; btn.disabled = false;
+    }).atualizarVeiculoBackendPorPrefixo(prefixoAntigo, dados);
+  }
+  function renderizarGerenciadorAnexosVeiculo(v) {
+    const anexosMap = [
+      { key: 'linkDianteira', label: 'Dianteira', id: 'Dianteira', icon: '📷' },
+      { key: 'linkTraseira', label: 'Traseira', id: 'Traseira', icon: '📷' },
+      { key: 'linkLatEsq', label: 'Lat. Esquerda', id: 'Lat_Esq', icon: '📷' },
+      { key: 'linkLatDir', label: 'Lat. Direita', id: 'Lat_Dir', icon: '📷' },
+      { key: 'linkTacografo', label: 'Tacógrafo', id: 'Tacografo', icon: '⏱️' },
+      { key: 'linkDocs', label: 'CRLV / Docs', id: 'Documentos', icon: '📄' }
+    ];
+
+    let html = '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; width: 100%;">';
+    
+    anexosMap.forEach(anexo => {
+      let hasLink = v[anexo.key] && v[anexo.key].startsWith('http');
+      let statusHtml = hasLink ? '<span class="anexo-status ok">SALVO</span>' : '<span class="anexo-status pendente">PENDENTE</span>';
+      
+      html += `<div class="anexo-card">
+                <div class="anexo-card-header">
+                  <span>${anexo.icon} ${anexo.label}</span>
+                  ${statusHtml}
+                </div>
+                <div class="anexo-actions">`;
+      
+      if(hasLink) {
+        html += `<a href="${v[anexo.key]}" target="_blank" class="btn-anexo btn-anexo-view" title="Visualizar Documento">📄 Ver</a>`;
+        html += `<button type="button" class="btn-anexo btn-anexo-delete" onclick="deletarAnexoVeiculo('${anexo.id}', '${anexo.key}')" title="Excluir Arquivo">🗑️ Excluir</button>`;
+      }
+      
+      let btnLabel = hasLink ? '🔄 Atualizar' : '➕ Adicionar';
+      html += `<button type="button" class="btn-anexo btn-anexo-edit" onclick="document.getElementById('file-${anexo.id}').click()">
+                 <span>${btnLabel}</span>
+               </button>
+               <input type="file" id="file-${anexo.id}" style="display:none;" accept="image/*,.pdf" onchange="fazerUploadAnexoVeiculo(this, '${anexo.id}', '${anexo.key}')">`;
+               
+      html += `</div></div>`;
+    });
+    
+    html += '</div>';
+    document.getElementById('mod-links').innerHTML = html;
+  }
+
+  function deletarAnexoVeiculo(tipoAnexo, objKey) {
+    if(!confirm("Tem certeza que deseja remover este anexo do veículo?")) return;
+    
+    let btnElements = document.querySelectorAll('.btn-anexo-delete');
+    btnElements.forEach(btn => { btn.disabled = true; btn.style.opacity = '0.5'; btn.innerText = "⏳"; });
+    
+    google.script.run.withSuccessHandler(function(res) {
+      alert(res.mensagem);
+      if(res.sucesso) {
+        if(veiculoSelecionadoParaEdicao) {
+          veiculoSelecionadoParaEdicao[objKey] = ""; 
+          renderizarGerenciadorAnexosVeiculo(veiculoSelecionadoParaEdicao); 
+        }
+      } else {
+        btnElements.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; btn.innerText = "🗑️ Excluir"; });
+      }
+    }).withFailureHandler(function(e) {
+      alert("Erro de comunicação ao excluir: " + e);
+      btnElements.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; btn.innerText = "🗑️ Excluir"; });
+    }).excluirAnexoVeiculo(veiculoSelecionadoParaEdicao.originalIndex, tipoAnexo);
+  }
+
+  async function fazerUploadAnexoVeiculo(inputElem, tipoAnexo, objKey) {
+    if(!inputElem.files || inputElem.files.length === 0) return;
+    var file = inputElem.files[0];
+    var btn = inputElem.previousElementSibling; 
+    var textoOriginal = btn.innerHTML;
+    
+    btn.innerHTML = "⏳ Enviando..."; btn.disabled = true;
+    
+    try {
+      let base64Full = await toBase64(file); 
+      let base64Data = base64Full.split(',')[1];
+      
+      google.script.run.withSuccessHandler(function(res) {
+        alert(res.mensagem);
+        if(res.sucesso) {
+          if(veiculoSelecionadoParaEdicao) {
+            veiculoSelecionadoParaEdicao[objKey] = res.url; 
+            renderizarGerenciadorAnexosVeiculo(veiculoSelecionadoParaEdicao); 
+          }
+        } else {
+           btn.innerHTML = textoOriginal; btn.disabled = false; inputElem.value = '';
+        }
+      }).withFailureHandler(function(e) { 
+        alert("Erro no Upload: " + e); btn.innerHTML = textoOriginal; btn.disabled = false; inputElem.value = ''; 
+      }).atualizarAnexoVeiculo(veiculoSelecionadoParaEdicao.originalIndex, veiculoSelecionadoParaEdicao.placa, tipoAnexo, base64Data, file.type, file.name);
+      
+    } catch(e) { 
+      alert("Erro ao ler arquivo."); btn.innerHTML = textoOriginal; btn.disabled = false; inputElem.value = ''; 
+    }
+  }
+
+  function verificarCompactador() { 
+    var select = document.getElementById('select-categoria').value; 
+    document.getElementById('area-compactador').style.display = (select === 'COMPACTADOR') ? 'block' : 'none'; 
+  }
+
+  function enviarFormularioVeiculo(event) {
+    event.preventDefault(); var form = document.getElementById('formCadastroVeiculo'); var btn = document.getElementById('btn-submit-veiculo'); var textElem = btn.querySelector('.btn-text');
+    btn.classList.add('carregando'); btn.disabled = true; textElem.innerText = "A gravar Anexos...";
+    google.script.run.withSuccessHandler(function(resposta) { 
+      alert(resposta.mensagem); 
+      if (resposta.sucesso) { 
+        form.reset(); verificarCompactador(); alternarAba('lista-veiculos'); carregarFrotaParaSelects(); 
+      } 
+      btn.classList.remove('carregando'); btn.disabled = false; textElem.innerText = "Salvar Veículo"; 
+    }).withFailureHandler(function(erro) { 
+      alert("Erro: " + erro); btn.classList.remove('carregando'); btn.disabled = false; textElem.innerText = "Tentar Novamente"; 
+    }).salvarVeiculoForm(form);
+  }
+
+  // LEITURA OCR
+  async function iniciarLeituraOCR(event) {
+    var file = event.target.files[0]; if (!file) return;
+    var statusDiv = document.getElementById('ocr-status'); statusDiv.style.display = 'block'; statusDiv.innerText = "⏳ A ler ficheiro... (Pode levar alguns segundos)";
+    try {
+      let textoExtraido = "";
+      if (file.type === 'application/pdf') { 
+        const arrayBuffer = await file.arrayBuffer(); 
+        const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise; 
+        for(let i = 1; i <= pdf.numPages; i++) { 
+          const page = await pdf.getPage(i); const content = await page.getTextContent(); 
+          textoExtraido += content.items.map(item => item.str).join(" ") + " "; 
+        } 
+      } 
+      else if (file.type.startsWith('image/')) { 
+        statusDiv.innerText = "⏳ A descarregar motor de IA..."; 
+        const resultado = await Tesseract.recognize(file, 'por', { logger: m => { if (m.status === 'recognizing text') statusDiv.innerText = "🔍 A analisar: " + Math.round(m.progress * 100) + "%"; } }); 
+        textoExtraido = resultado.data.text; 
+      } 
+      else { statusDiv.innerText = "❌ Envie PDF ou Imagem."; return; }
+      statusDiv.innerText = "✅ Leitura concluída. A preencher campos..."; 
+      preencherCamposComRegex(textoExtraido); 
+      setTimeout(() => { statusDiv.style.display = 'none'; }, 4000);
+    } catch (erro) { console.error(erro); statusDiv.innerText = "❌ Falha. Preencha manualmente."; }
+  }
+
+  function preencherCamposComRegex(texto) {
+    var txt = texto.toUpperCase(); var achou = false;
+    var p = txt.match(/[A-Z]{3}-?[0-9][A-Z0-9][0-9]{2}/); if(p){ document.getElementById('ipt-placa').value=p[0].replace('-',''); achou=true; }
+    var r = txt.match(/\b\d{11}\b/); if(r){ document.getElementById('ipt-renavam').value=r[0]; achou=true; }
+    var c = txt.match(/\b[A-HJ-NPR-Z0-9]{17}\b/); if(c){ document.getElementById('ipt-chassi').value=c[0]; achou=true; }
+    var a = txt.match(/\b(19|20)\d{2}\s*\/?\s*(19|20)\d{2}\b/); if(a){ var m = a[0].match(/\d{4}/g); if(m && m.length>=2){ document.getElementById('ipt-anof').value=m[0]; document.getElementById('ipt-anom').value=m[1]; achou=true; } }
+    var mt = txt.match(/(?:MOTOR|M0TOR|M0T0R|MOT0R)[\s\:\-\n]*([A-Z0-9]{5,20})/i); if(mt && mt[1]){ document.getElementById('ipt-motor').value=mt[1]; achou=true; }
+    if(!achou) alert("A IA não identificou os dados claramente. Preencha manualmente.");
+  }
+</script>

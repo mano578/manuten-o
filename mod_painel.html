@@ -1,0 +1,55 @@
+<div id="aba-painel-geral" class="aba-tela">
+  <h1 class="titulo-tela">Monitoramento por Operação</h1>
+  
+  <div id="container-alertas-sos" style="display: none; background: #fff; padding: 20px; border-radius: 12px; margin-bottom: 25px; border: 1px solid #fee2e2;">
+    <h2 style="font-size:18px; margin-bottom:15px; color:#b91c1c; display:flex; align-items:center; gap:8px;">🚨 Chamados SOS Pendentes</h2>
+    <div class="grid-alertas-sos" id="grid-sos-cards"></div>
+  </div>
+
+  <div class="admin-card" style="border-left: 4px solid #3b82f6; background: #ffffff; width: 100%; margin-bottom: 20px;">
+    <h3 style="color: #1e3a8a; display: flex; justify-content: space-between; align-items: center; font-size: 15px; margin-top: 0;">
+        <span>🔔 Manutenções: Hoje e Próximos 7 Dias</span>
+        <button onclick="carregarNotificacoesManutencaoPainel()" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; font-weight: bold; color: #475569;">🔄 Atualizar</button>
+    </h3>
+    <div class="caixas-alertas-manutencao-multiplas" style="margin-top: 15px; display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; padding-right: 5px;">
+        <span style="color:#64748b; font-size:12px; font-style: italic;">⏳ Analisando calendário da frota...</span>
+    </div>
+  </div>
+  <div id="container-frota-dinamica"><div class="vazio-msg">A buscar dados da nuvem...</div></div>
+</div>
+
+<!-- 🆕 Balão/tooltip flutuante: mostra defeito (RETIDO-O.S.) ou descrição (S.O.S) ao passar o mouse/dedo sobre o veículo.
+     Fica FORA de qualquer ".aba-tela" de propósito: essa classe tem "transform" no CSS, e um ancestral
+     com "transform" faz "position: fixed" ser calculado relativo a ele em vez da tela inteira — foi
+     exatamente isso que travava o balão sempre no mesmo canto, longe do dedo/mouse. -->
+<div id="balao-tooltip-painel" class="balao-tooltip-painel"></div>
+
+<div class="modal-overlay" id="modal-acoes-painel" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999;">
+  <div class="modal-box" style="max-width: 450px; width: 90%; background: white; border-radius: 12px; padding: 25px; text-align: center;">
+    
+    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 20px;">
+      <h2 style="margin:0; font-size: 18px; color:#0f172a;">Ações para <span id="lbl-veiculo-acao" style="color:#1e3a8a; font-weight:900;"></span></h2>
+      <button class="btn-fechar" onclick="document.getElementById('modal-acoes-painel').style.display='none'" style="background:none; border:none; font-size:24px; cursor:pointer;">&times;</button>
+    </div>
+
+    <div id="loading-analise-veiculo" style="display:none; color:#f59e0b; font-weight:bold; margin-bottom:15px;">
+      <i class="fa-solid fa-spinner fa-spin"></i> Analisando pendências do veículo...
+    </div>
+
+    <div id="botoes-acao-veiculo">
+      <button class="btn-acao-painel" style="background: #f59e0b; color: #78350f;" onclick="redirecionarPara('sos')">
+        🚨 Atribuir Novo S.O.S
+      </button>
+      
+      <button class="btn-acao-painel" style="background: #ef4444;" onclick="redirecionarPara('ordem-servico')">
+        🛠️ Abrir Ordem de Serviço (O.S.)
+      </button>
+
+      <div style="border-top: 1px dashed #cbd5e1; margin: 20px 0;"></div>
+
+      <button class="btn-acao-painel" style="background: #10b981; box-shadow: 0 4px 6px rgba(16,185,129,0.3);" onclick="iniciarLiberacaoVeiculo()">
+        ✅ Marcar como DEVOLVIDO
+      </button>
+    </div>
+  </div>
+</div>

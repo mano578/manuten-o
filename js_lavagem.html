@@ -1,0 +1,230 @@
+<script>
+  // ================= LAVAGEM DE FROTA =================
+  var lavagensGlobais = [];
+
+  function verificarLocalLavagem(valor) { 
+    var campoValor = document.getElementById('grupo-valor-lavagem'); 
+    var inputValor = document.getElementById('lav-valor'); 
+    if(valor === 'EXTERNA') { campoValor.style.display = 'block'; inputValor.required = true; } 
+    else { campoValor.style.display = 'none'; inputValor.required = false; inputValor.value = ''; } 
+  }
+
+  // NOTA (revisão): preencherPlacaAutomatica foi movida para JS_Global.html, onde
+  // agora existe como função única compartilhada por todos os módulos (estava
+  // duplicada aqui e em JS_Frota.html).
+
+  // ================= PREENCHER LISTA DE PREFIXOS (DATALIST) =================
+  function popularDatalistLavagem() {
+    var datalist = document.getElementById('lista-prefixos-lavagem');
+    if (typeof frotaGlobal !== 'undefined' && datalist) {
+      var html = '';
+      // Ordena alfabeticamente e adiciona a placa para pesquisa inteligente
+      frotaGlobal.slice().sort((a,b) => a.prefixo.localeCompare(b.prefixo)).forEach(v => { 
+        html += `<option value="${v.prefixo}">${v.placa}</option>`; 
+      });
+      datalist.innerHTML = html;
+    }
+  }
+
+  function enviarFormularioLavagem(event) {
+    event.preventDefault(); 
+    var form = document.getElementById('formLavagem'); 
+    var btn = document.getElementById('btn-submit-lav'); 
+    var textElem = btn.querySelector('.btn-text') || btn;
+    var txtOriginal = textElem.innerText;
+    
+    btn.classList.add('carregando'); btn.disabled = true; textElem.innerText = "A gravar no Banco...";
+    
+    google.script.run.withSuccessHandler(function(res) { 
+      alert(res.mensagem); 
+      if(res.sucesso) { 
+        form.reset(); 
+        if(typeof preencherDataHoraAtual === 'function') preencherDataHoraAtual(); 
+        verificarLocalLavagem('INTERNA'); 
+        carregarHistoricoLavagens(); // Atualiza a tabela imediatamente após salvar!
+      } 
+      btn.classList.remove('carregando'); btn.disabled = false; textElem.innerText = txtOriginal; 
+    }).withFailureHandler(function(e) {
+      alert("❌ Erro de conexão ao salvar.");
+      btn.classList.remove('carregando'); btn.disabled = false; textElem.innerText = txtOriginal; 
+    }).salvarLavagemForm(form);
+  }
+
+  function carregarHistoricoLavagens() {
+    var tbody = document.getElementById('tbody-lista-lavagens');
+    if (!tbody) return;
+    
+    // Só mostra "sincronizando" se a tabela estiver completamente vazia (para não piscar o ecrã)
+    if(lavagensGlobais.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#64748b;">⏳ A sincronizar lavagens...</td></tr>';
+    }
+    
+    google.script.run.withSuccessHandler(function(res) {
+      if (!res.sucesso) {
+          tbody.innerHTML = `<tr><td colspan="7" style="color:#b91c1c; text-align:center;">${res.mensagem}</td></tr>`;
+          return;
+      }
+      
+      lavagensGlobais = res.dados || []; 
+      var campoBusca = document.getElementById('busca-lavagem');
+      if(campoBusca) campoBusca.value = ""; 
+      
+      renderizarTabelaLavagens(lavagensGlobais, true); 
+      popularDatalistLavagem(); // Aproveita para preencher a lista inteligente aqui também
+      
+    }).withFailureHandler(function(erro) {
+      tbody.innerHTML = '<tr><td colspan="7" style="color:#b91c1c; text-align:center;">❌ Falha na comunicação com o servidor.</td></tr>';
+    }).listarHistoricoLavagensBackend();
+  }
+
+  function renderizarTabelaLavagens(lista, limitarA20) {
+    var tbody = document.getElementById('tbody-lista-lavagens');
+    if (!tbody) return;
+    
+    var listaExibir = [...lista].reverse(); // Inverte para mostrar as mais recentes primeiro
+    if (limitarA20) listaExibir = listaExibir.slice(0, 20); 
+
+    if (listaExibir.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#64748b;">Nenhum registo encontrado.</td></tr>';
+      return;
+    }
+
+    var html = '';
+    listaExibir.forEach(l => {
+      // Correção de Datas para garantir o formato correto na tabela
+      var dataFmt = l.data;
+      if(dataFmt && dataFmt.includes('T')) {
+        let p = dataFmt.split('T'); let d = p[0].split('-');
+        dataFmt = d[2] + '/' + d[1] + '/' + d[0] + ' ' + p[1];
+      }
+
+      var custoFmt = parseFloat(l.custo || 0);
+      var corCusto = custoFmt > 0 ? '#b91c1c' : '#059669'; // Vermelho para gastos, verde para R$ 0.00
+
+      html += `
+        <tr onclick="exibirEspelhoLavagem(${l.rowIndex})" style="cursor:pointer; border-bottom: 1px solid #e2e8f0; transition:0.2s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">
+          <td style="padding:10px; font-size:11px;">${dataFmt}</td>
+          <td style="padding:10px; font-weight:bold; color:#1e3a8a; font-size:12px;">${l.prefixo}</td>
+          <td style="padding:10px; font-size:12px;">${l.placa}</td>
+          <td style="padding:10px; font-size:12px;">${l.servico}</td>
+          <td style="padding:10px; font-size:12px;">${l.local}</td>
+          <td style="padding:10px; color:${corCusto}; font-weight:600; font-size:12px;">R$ ${custoFmt.toFixed(2)}</td>
+          <td style="padding:10px; font-size:11px;">${l.funcionario || l.responsavel || ''}</td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+  }
+
+  function filtrarLavagens() {
+    var campoBusca = document.getElementById('busca-lavagem');
+    if(!campoBusca) return;
+    
+    var termo = campoBusca.value.toLowerCase().trim();
+    
+    if (termo === "") {
+      renderizarTabelaLavagens(lavagensGlobais, true);
+      return;
+    }
+    
+    var filtrados = lavagensGlobais.filter(l => 
+      String(l.prefixo).toLowerCase().includes(termo) || 
+      String(l.placa).toLowerCase().includes(termo) ||
+      String(l.funcionario || l.responsavel || '').toLowerCase().includes(termo) ||
+      String(l.servico).toLowerCase().includes(termo)
+    );
+    renderizarTabelaLavagens(filtrados, false);
+  }
+
+  function exibirEspelhoLavagem(rowIndex) {
+    var l = lavagensGlobais.find(x => x.rowIndex === rowIndex);
+    if(!l) return alert("Erro ao encontrar registo.");
+
+    var dataFmt = l.data;
+    if(dataFmt && dataFmt.includes('T')) {
+       let p = dataFmt.split('T'); let d = p[0].split('-');
+       dataFmt = d[2] + '/' + d[1] + '/' + d[0] + ' ' + p[1];
+    }
+
+    document.getElementById('view-lav-prefixo').innerText = l.prefixo;
+    document.getElementById('view-lav-placa').innerText = l.placa;
+    document.getElementById('view-lav-data').innerText = dataFmt;
+    document.getElementById('view-lav-servico').innerText = l.servico;
+    document.getElementById('view-lav-local').innerText = l.local;
+    
+    var custoFmt = parseFloat(l.custo || 0);
+    var elCusto = document.getElementById('view-lav-custo');
+    elCusto.innerText = "R$ " + custoFmt.toFixed(2);
+    elCusto.style.color = custoFmt > 0 ? '#b91c1c' : '#059669';
+    
+    document.getElementById('view-lav-func').innerText = l.funcionario || l.responsavel || '';
+
+    var btnExcluir = document.getElementById('btn-lav-excluir');
+    if(btnExcluir) {
+        btnExcluir.onclick = function() {
+          if(confirm("Deseja mesmo excluir o registo do veículo " + l.prefixo + "?")) {
+            fecharModal('modal-detalhes-lavagem');
+            acionarExcluirLavagem(l.rowIndex);
+          }
+        };
+    }
+
+    var btnEditar = document.getElementById('btn-lav-editar');
+    if(btnEditar) {
+        btnEditar.onclick = function() {
+          fecharModal('modal-detalhes-lavagem');
+          abrirModalEditarLavagem(l);
+        };
+    }
+
+    document.getElementById('modal-detalhes-lavagem').style.display = 'flex';
+  }
+
+  function acionarExcluirLavagem(linha) {
+    google.script.run.withSuccessHandler(function(res){
+      alert(res.mensagem);
+      carregarHistoricoLavagens(); 
+    }).excluirLavagemBackend(linha);
+  }
+
+  function abrirModalEditarLavagem(l) {
+    document.getElementById('edit-lav-linha').value = l.rowIndex;
+    document.getElementById('edit-lav-servico').value = l.servico.toUpperCase();
+    
+    var localLimpo = String(l.local).toUpperCase().includes("INTERNA") ? "INTERNA" : "EXTERNA";
+    document.getElementById('edit-lav-local').value = localLimpo;
+    
+    document.getElementById('edit-lav-custo').value = parseFloat(l.custo || 0);
+    document.getElementById('edit-lav-func').value = l.funcionario || l.responsavel || '';
+    
+    document.getElementById('modal-editar-lavagem').style.display = 'flex';
+  }
+
+  function enviarEdicaoLavagem(event) {
+    event.preventDefault();
+    var linha = document.getElementById('edit-lav-linha').value;
+    var dados = {
+      servico: document.getElementById('edit-lav-servico').value,
+      local: document.getElementById('edit-lav-local').value,
+      custo: document.getElementById('edit-lav-custo').value,
+      funcionario: document.getElementById('edit-lav-func').value
+    };
+
+    var btn = event.submitter || document.querySelector('#formEditarLavagem button[type="submit"]');
+    var txt = btn.innerText;
+    btn.innerText = "⏳ A gravar..."; btn.disabled = true;
+
+    google.script.run.withSuccessHandler(function(res){
+      alert(res.mensagem);
+      fecharModal('modal-editar-lavagem');
+      carregarHistoricoLavagens();
+      btn.innerText = txt; btn.disabled = false;
+    }).atualizarLavagemBackend(linha, dados);
+  }
+
+  document.addEventListener("DOMContentLoaded", function() {
+    // Atraso de 2 segundos para dar tempo do sistema descarregar os camiões (frotaGlobal) da nuvem
+    setTimeout(function() {
+      popularDatalistLavagem();
+    }, 2000); 
+  });
+</script>

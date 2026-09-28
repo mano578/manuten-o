@@ -1,0 +1,172 @@
+<div id="aba-notas-fiscais" class="aba-tela" style="display:none;">
+  <h1 class="titulo-tela">🧾 Controle de Notas Fiscais Pagas</h1>
+  <div style="max-width: 1100px;">
+    
+    <div class="header-tabela-geral">
+      <div class="barra-busca-container">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" id="input-busca-notas" class="barra-busca" placeholder="Buscar por Fornecedor, Nº da Nota..." onkeyup="manipularBuscaNotasFiscais()">
+      </div>
+      <button class="btn-salvar" style="width: auto; padding: 13px 20px; font-size: 14px; background:#1e3a8a;" onclick="abrirModalNovaNotaFiscal()">➕ Cadastrar Nota</button>
+    </div>
+
+    <div class="table-wrapper">
+      <table class="tabela-dados">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>FORNECEDOR</th>
+            <th>DATA COMPRA</th>
+            <th>VALOR (R$)</th>
+            <th>Nº NOTA</th>
+            <th>COMPROVANTE</th>
+            <th>NF DIGITAL</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-lista-notas">
+          <tr><td colspan="7" class="vazio-msg" style="padding: 20px; text-align: center;">A carregar notas fiscais...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-nova-nota-fiscal" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999;">
+  <div class="modal-box" style="max-width: 600px;">
+    <div class="modal-header">
+      <h2>🧾 Registrar Nota Fiscal</h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-nova-nota-fiscal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="formNotaFiscal" onsubmit="enviarFormularioNotaFiscal(event)">
+        <div class="input-group">
+          <label>Nome do Fornecedor *</label>
+          <input type="text" id="nf-fornecedor" required placeholder="Ex: Posto Ipiranga / Oficina Central" style="text-transform: uppercase;">
+        </div>
+        <div class="form-row">
+          <div class="input-group">
+            <label>Data do Pagamento *</label>
+            <input type="date" id="nf-data" required>
+          </div>
+          <div class="input-group">
+            <label>Número da Nota Fiscal *</label>
+            <input type="text" id="nf-numero" required placeholder="Ex: 10442">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="input-group" style="grid-column: 1 / -1;">
+            <label>Valor Pago (R$) *</label>
+            <input type="number" id="nf-valor" step="0.01" required placeholder="Ex: 450.50">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="input-group">
+            <label>Comprovante (Pgto)</label>
+            <input type="file" id="nf-comprovante" style="padding: 8px;" accept="image/*,.pdf">
+          </div>
+          <div class="input-group">
+            <label>Nota Fiscal (Ficheiro Digital)</label>
+            <input type="file" id="nf-digital" style="padding: 8px;" accept="image/*,.pdf">
+          </div>
+        </div>
+        <button type="submit" class="btn-salvar" id="btn-submit-nf" style="margin-top: 15px; background: #1e3a8a;">
+          <span class="loader-spinner"></span>
+          <span class="btn-text">Registrar Nota Fiscal</span>
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-detalhes-nota" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9998;">
+  <div class="modal-box" style="max-width: 650px; width: 95%; max-height: 90vh; overflow-y: auto; background: white; border-radius: 12px; margin: auto; padding: 25px;">
+    <div class="modal-header" style="border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 20px;">
+      <h2 style="margin:0;">🧾 Detalhes da Nota - <span id="view-nota-id" style="color:#1e3a8a;"></span></h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-detalhes-nota')" style="font-size:24px; background:none; border:none; cursor:pointer;">&times;</button>
+    </div>
+    <div class="modal-body" style="font-size: 13px; color: #334155;">
+      
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 20px;">
+        <div><strong>Fornecedor:</strong><br><span id="view-nota-fornecedor" style="font-weight: bold; color:#1e3a8a; font-size:14px;"></span></div>
+        <div><strong>Data da Compra:</strong><br><span id="view-nota-data" style="font-weight: bold;"></span></div>
+        <div><strong>Valor Total:</strong><br><span id="view-nota-valor" style="color:#b91c1c; font-weight:bold; font-size:14px;"></span></div>
+        <div><strong>Nº da Nota:</strong><br><span id="view-nota-numero" style="font-weight: bold;"></span></div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px;">
+        <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; text-align: center; border: 1px dashed #cbd5e1;">
+          <h4 style="margin: 0 0 10px 0; color: #475569; font-size:12px;">📄 Comprovante Físico</h4>
+          <div id="view-nota-box-comprovante" style="display:flex; justify-content:center; gap:5px; margin-top:10px; flex-wrap:wrap;"></div>
+        </div>
+        <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; text-align: center; border: 1px dashed #cbd5e1;">
+          <h4 style="margin: 0 0 10px 0; color: #475569; font-size:12px;">🧾 Nota Fiscal Digital</h4>
+          <div id="view-nota-box-digital" style="display:flex; justify-content:center; gap:5px; margin-top:10px; flex-wrap:wrap;"></div>
+        </div>
+      </div>
+
+      <div id="view-nota-acoes-footer" style="display: flex; width: 100%; gap: 10px; border-top: 1px solid #e2e8f0; padding-top: 15px;">
+        <button id="btn-view-nota-editar" style="flex:1; background:#f59e0b; color:white; border:none; padding:12px; border-radius:6px; font-size:13px; font-weight:bold; cursor:pointer;">✏️ Editar Dados</button>
+        <button id="btn-view-nota-excluir" style="flex:1; background:#ef4444; color:white; border:none; padding:12px; border-radius:6px; font-size:13px; font-weight:bold; cursor:pointer;">🗑️ Excluir Registro</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-editar-nota" style="display:none; justify-content: center; align-items: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.6); z-index: 9999;">
+  <div class="modal-box" style="max-width: 550px; width: 90%; background: white; border-radius: 12px; margin: auto; padding: 25px;">
+    
+    <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 15px;">
+      <h2 style="font-size: 16px; margin: 0; color: #1e293b; display: flex; align-items: center; gap: 10px;">
+        ✏️ Editar Nota Fiscal
+        <span id="badge-status-edicao" style="padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: bold; text-transform: uppercase;"></span>
+      </h2>
+      <button class="btn-fechar" onclick="fecharModal('modal-editar-nota')" style="font-size:24px; background:none; border:none; cursor:pointer;">&times;</button>
+    </div>
+    
+    <div class="modal-body">
+      <form id="formEditarNota" onsubmit="enviarEdicaoNota(event)">
+        <input type="hidden" id="nf-edit-id">
+
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Fornecedor *</label>
+          <input type="text" id="nf-edit-fornecedor" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-transform: uppercase;" required>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+          <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Data da Compra *</label>
+            <input type="date" id="nf-edit-data" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;" required>
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Nº da Nota</label>
+            <input type="text" id="nf-edit-numero" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;">
+          </div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+          <label style="display: block; font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #475569;">Valor Total (R$) *</label>
+          <input type="number" id="nf-edit-valor" step="0.01" style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px;" required>
+        </div>
+
+        <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px dashed #cbd5e1; margin-bottom: 20px;">
+           <h4 style="margin: 0 0 10px 0; font-size: 13px; color: #1e3a8a;">📎 Atualizar Anexos</h4>
+           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+              <div>
+                 <label id="lbl-edit-status-comp" style="display:block; font-size:11px; margin-bottom:5px; font-weight:bold;"></label>
+                 <input type="file" id="nf-edit-comp" style="width: 100%; padding: 6px; font-size: 11px; background: white; border: 1px solid #cbd5e1; border-radius: 4px;" accept="image/*,.pdf">
+              </div>
+              <div>
+                 <label id="lbl-edit-status-nf" style="display:block; font-size:11px; margin-bottom:5px; font-weight:bold;"></label>
+                 <input type="file" id="nf-edit-dig" style="width: 100%; padding: 6px; font-size: 11px; background: white; border: 1px solid #cbd5e1; border-radius: 4px;" accept="image/*,.pdf">
+              </div>
+           </div>
+        </div>
+
+        <button type="submit" class="btn-salvar" style="width: 100%; padding: 12px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">
+          💾 Salvar Alterações
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
